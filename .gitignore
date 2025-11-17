@@ -48,6 +48,7 @@ Thumbs.db
 
 # PyInstaller
 *.spec
+!pizzeria.spec
 
 # Settings (may contain sensitive data)
 settings.json
