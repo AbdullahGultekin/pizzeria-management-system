@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Navigatie naar adres</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 400px;
+            margin: 50px auto;
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .loading {
+            color: #666;
+            margin: 20px 0;
+        }
+        .options {
+            margin-top: 20px;
+        }
+        .option-btn {
+            display: block;
+            width: 100%;
+            padding: 12px;
+            margin: 10px 0;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            text-decoration: none;
+        }
+        .option-btn:hover {
+            background-color: #45a049;
+        }
+        .option-btn.apple {
+            background-color: #007AFF;
+        }
+        .option-btn.apple:hover {
+            background-color: #0051D5;
+        }
+        .option-btn.waze {
+            background-color: #33CCFF;
+        }
+        .option-btn.waze:hover {
+            background-color: #00B3FF;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Navigatie naar adres</h2>
+        <p class="loading" id="loading">Bezig met openen...</p>
+        <div class="options" id="options" style="display: none;">
+            <p>Kies een navigatie app:</p>
+            <a id="google-link" class="option-btn" href="#" target="_blank">🗺️ Google Maps</a>
+            <a id="waze-link" class="option-btn waze" href="#" target="_blank">🚗 Waze</a>
+            <a id="apple-link" class="option-btn apple" href="#" target="_blank">🍎 Apple Kaarten</a>
+        </div>
+    </div>
+
+    <script>
+        // Get address from URL parameter
+        function getUrlParameter(name) {
+            name = name.replace(/[\[]/, '\\[').replace(/[\]]/, '\\]');
+            var regex = new RegExp('[\\?&]' + name + '=([^&#]*)');
+            var results = regex.exec(location.search);
+            return results === null ? '' : decodeURIComponent(results[1].replace(/\+/g, ' '));
+        }
+
+        // Detect platform
+        function detectPlatform() {
+            var userAgent = navigator.userAgent || navigator.vendor || window.opera;
+            
+            // iOS detection
+            if (/iPad|iPhone|iPod/.test(userAgent) && !window.MSStream) {
+                return 'ios';
+            }
+            
+            // Android detection
+            if (/android/i.test(userAgent)) {
+                return 'android';
+            }
+            
+            return 'desktop';
+        }
+
+        // Build navigation URLs
+        function buildNavigationUrls(address) {
+            var encodedAddress = encodeURIComponent(address);
+            
+            return {
+                google: 'https://www.google.com/maps/search/?api=1&query=' + encodedAddress,
+                waze: 'https://waze.com/ul?q=' + encodedAddress,
+                apple: 'http://maps.apple.com/?q=' + encodedAddress
+            };
+        }
+
+        // Try to open app with fallback
+        function openNavigation(address) {
+            var platform = detectPlatform();
+            var urls = buildNavigationUrls(address);
+            var urlsToTry = [];
+            
+            // Determine which apps to try based on platform
+            if (platform === 'ios') {
+                // iOS: Try Apple Maps first, then Google Maps
+                urlsToTry = [
+                    { url: 'maps://?q=' + encodeURIComponent(address), name: 'Apple Maps' },
+                    { url: urls.apple, name: 'Apple Maps (web)' },
+                    { url: urls.google, name: 'Google Maps' }
+                ];
+            } else if (platform === 'android') {
+                // Android: Try Waze first, then Google Maps
+                urlsToTry = [
+                    { url: 'waze://?q=' + encodeURIComponent(address), name: 'Waze' },
+                    { url: urls.waze, name: 'Waze (web)' },
+                    { url: urls.google, name: 'Google Maps' }
+                ];
+            } else {
+                // Desktop: Use Google Maps
+                urlsToTry = [
+                    { url: urls.google, name: 'Google Maps' }
+                ];
+            }
+            
+            // Try to open first URL
+            var tried = 0;
+            function tryOpen() {
+                if (tried >= urlsToTry.length) {
+                    // All attempts failed, show options
+                    showOptions(urls);
+                    return;
+                }
+                
+                var attempt = urlsToTry[tried];
+                var link = document.createElement('a');
+                link.href = attempt.url;
+                link.target = '_blank';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                
+                // Wait a bit, then try next if needed
+                setTimeout(function() {
+                    tried++;
+                    if (tried < urlsToTry.length) {
+                        tryOpen();
+                    } else {
+                        showOptions(urls);
+                    }
+                }, 500);
+            }
+            
+            tryOpen();
+        }
+
+        // Show manual options
+        function showOptions(urls) {
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('options').style.display = 'block';
+            
+            document.getElementById('google-link').href = urls.google;
+            document.getElementById('waze-link').href = urls.waze;
+            document.getElementById('apple-link').href = urls.apple;
+        }
+
+        // Main execution
+        (function() {
+            var address = getUrlParameter('q') || getUrlParameter('address') || getUrlParameter('query');
+            
+            if (!address) {
+                document.getElementById('loading').textContent = 'Geen adres opgegeven';
+                showOptions({
+                    google: 'https://www.google.com/maps',
+                    waze: 'https://waze.com',
+                    apple: 'http://maps.apple.com'
+                });
+                return;
+            }
+            
+            // Try automatic navigation
+            openNavigation(address);
+        })();
+    </script>
+</body>
+</html>
+
+
+

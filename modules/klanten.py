@@ -1,9 +1,19 @@
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, Entry, StringVar
+from typing import List
 import database
+from database import DatabaseContext
 
 
-def open_klanten_zoeken(root, tel_entry, naam_entry, adres_entry, nr_entry, postcode_var, postcodes_lijst):
+def open_klanten_zoeken(
+    root: tk.Tk,
+    tel_entry: Entry,
+    naam_entry: Entry,
+    adres_entry: Entry,
+    nr_entry: Entry,
+    postcode_var: StringVar,
+    postcodes_lijst: List[str]
+) -> None:
     """Open klant-zoekvenster in een apart Toplevel (hoofdschema blijft intact)."""
     top = tk.Toplevel(root)
     top.title("Klant zoeken")
@@ -34,29 +44,27 @@ def open_klanten_zoeken(root, tel_entry, naam_entry, adres_entry, nr_entry, post
     tree.configure(yscrollcommand=scrollbar.set)
     scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
-    def update_zoekresultaten(*_):
+    def update_zoekresultaten(*_: str) -> None:
         term = zoek_var.get().strip()
         tree.delete(*tree.get_children())
         if not term:
             return
-        conn = database.get_db_connection()
-        cur = conn.execute(
-            "SELECT id, telefoon, naam, straat, huisnummer FROM klanten WHERE telefoon LIKE ?",
-            (f"%{term}%",)
-        )
-        for r in cur.fetchall():
-            adres = f"{r['straat'] or ''} {r['huisnummer'] or ''}".strip()
-            tree.insert("", "end", iid=str(r['id']), values=(r['telefoon'], r['naam'] or "", adres))
-        conn.close()
+        with DatabaseContext() as conn:
+            cur = conn.execute(
+                "SELECT id, telefoon, naam, straat, huisnummer FROM klanten WHERE telefoon LIKE ?",
+                (f"%{term}%",)
+            )
+            for r in cur.fetchall():
+                adres = f"{r['straat'] or ''} {r['huisnummer'] or ''}".strip()
+                tree.insert("", "end", iid=str(r['id']), values=(r['telefoon'], r['naam'] or "", adres))
 
-    def selecteer_klant_en_sluit():
+    def selecteer_klant_en_sluit() -> None:
         sel = tree.selection()
         if not sel:
             return
         klant_id = int(sel[0])
-        conn = database.get_db_connection()
-        k = conn.execute("SELECT * FROM klanten WHERE id = ?", (klant_id,)).fetchone()
-        conn.close()
+        with DatabaseContext() as conn:
+            k = conn.execute("SELECT * FROM klanten WHERE id = ?", (klant_id,)).fetchone()
         if not k:
             return
         try:

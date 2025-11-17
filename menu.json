@@ -411,6 +411,12 @@
       "naam": "Kapsalon kip/lams/pita",
       "prijs": 17.0,
       "desc": ""
+    },
+    {
+      "id": 609,
+      "naam": "Kapsalon Veggie",
+      "prijs": 10.0,
+      "desc": ""
     }
   ],
   "Large pizza's": [
@@ -1421,12 +1427,6 @@
     {
       "id": 1005,
       "naam": "Andalousesaus",
-      "prijs": 1.5,
-      "desc": ""
-    },
-    {
-      "id": 1006,
-      "naam": "Looksaus",
       "prijs": 1.5,
       "desc": ""
     },

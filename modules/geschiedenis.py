@@ -1,300 +1,709 @@
-# modules/geschiedenis.py
+"""
+Order History Module
+
+This module provides a modern interface for viewing, searching, and managing order history.
+"""
+
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog
+from typing import Dict, List, Optional, Any, Callable
 import json
-import database
+from datetime import date
+from database import DatabaseContext
+from logging_config import get_logger
+from exceptions import DatabaseError
+from modules.history_service import HistoryService
+from modules.history_ui import HistoryUI
+
+logger = get_logger("pizzeria.geschiedenis")
 
 
-def open_geschiedenis(root, menu_data_global, extras_data_global, app_settings_global, laad_bestelling_callback):
-    """
-    Opent de geschiedenistab met de mogelijkheid om bestellingen te bekijken,
-    te filteren en opnieuw te laden voor bewerking.
-    """
-    for widget in root.winfo_children():
-        widget.destroy()
-
-    # --- Frames ---
-    top_frame = tk.Frame(root)
-    top_frame.pack(fill=tk.X, padx=10, pady=10)
-    tree_frame = tk.Frame(root)
-    tree_frame.pack(fill=tk.BOTH, expand=True, padx=10)
-    bottom_frame = tk.Frame(root)
-    bottom_frame.pack(fill=tk.X, padx=10, pady=10)
-
-    # --- Filters ---
-    tk.Label(top_frame, text="Zoek op naam/telefoon/adres:").pack(side=tk.LEFT, padx=(0, 5))
-    search_var = tk.StringVar()
-    search_entry = tk.Entry(top_frame, textvariable=search_var, width=30)
-    search_entry.pack(side=tk.LEFT, padx=5)
-
-    tk.Label(top_frame, text="Datum (YYYY-MM-DD):").pack(side=tk.LEFT, padx=(15, 5))
-    date_var = tk.StringVar()
-    date_entry = tk.Entry(top_frame, textvariable=date_var, width=12)
-    date_entry.pack(side=tk.LEFT, padx=5)
-
-    tk.Button(top_frame, text="Vernieuwen", command=lambda: refresh_data(), bg="#E1E1FF").pack(side=tk.LEFT, padx=10)
-
-    # --- Treeview ---
-    columns = ('datum', 'tijd', 'bon', 'naam', 'telefoon', 'adres', 'totaal')
-    tree = ttk.Treeview(tree_frame, columns=columns, show='headings')
-    tree.heading('datum', text='Datum')
-    tree.heading('tijd', text='Tijd')
-    tree.heading('bon', text='Bonnummer')
-    tree.heading('naam', text='Naam')
-    tree.heading('telefoon', text='Telefoon')
-    tree.heading('adres', text='Adres')
-    tree.heading('totaal', text='Totaal')
-
-    for col in columns:
-        tree.column(col, width=120)
-    tree.column('adres', width=250)
-    tree.column('naam', width=150)
-
-    vsb = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
-    tree.configure(yscrollcommand=vsb.set)
-    vsb.pack(side='right', fill='y')
-    tree.pack(side='left', fill='both', expand=True)
-
-    # --- Data verversen ---
-    def refresh_data(*_):
-        """Haalt data op en vult de treeview."""
-        for i in tree.get_children():
-            tree.delete(i)
-
-        conn = database.get_db_connection()
-        cursor = conn.cursor()
-
-        query = """
-                SELECT b.id,
-                       b.datum,
-                       b.tijd,
-                       b.totaal,
-                       b.bonnummer,
-                       k.naam,
-                       k.telefoon,
-                       k.straat,
-                       k.huisnummer
-                FROM bestellingen b
-                         JOIN klanten k ON b.klant_id = k.id \
-                """
-        params = []
-        conditions = []
-
-        search_term = (search_var.get() or "").strip()
-        if search_term:
-            conditions.append("(k.naam LIKE ? OR k.telefoon LIKE ? OR k.straat LIKE ?)")
-            params.extend([f"%{search_term}%", f"%{search_term}%", f"%{search_term}%"])
-
-        date_term = (date_var.get() or "").strip()
-        if date_term:
-            conditions.append("b.datum = ?")
-            params.append(date_term)
-
-        if conditions:
-            query += " WHERE " + " AND ".join(conditions)
-
-        query += " ORDER BY b.datum DESC, b.tijd DESC"
-
-        cursor.execute(query, params)
-        rows = cursor.fetchall()
-        conn.close()
-
-        for row in rows:
-            adres = f"{row['straat'] or ''} {row['huisnummer'] or ''}".strip()
-            tree.insert(
+class HistoryManager:
+    """Manager class for order history interface."""
+    
+    def __init__(
+        self,
+        parent: tk.Widget,
+        menu_data: Dict[str, Any],
+        extras_data: Dict[str, Any],
+        app_settings: Dict[str, Any],
+        load_order_callback: Callable
+    ):
+        """
+        Initialize history manager.
+        
+        Args:
+            parent: Parent widget (tab frame)
+            menu_data: Menu data dictionary
+            extras_data: Extras data dictionary
+            app_settings: Application settings
+            load_order_callback: Callback to load order for editing
+        """
+        self.parent = parent
+        self.menu_data = menu_data
+        self.extras_data = extras_data
+        self.app_settings = app_settings
+        self.load_order_callback = load_order_callback
+        
+        self.service = HistoryService()
+        self.ui = HistoryUI()
+        
+        # UI components
+        self.tree: Optional[ttk.Treeview] = None
+        self.filter_vars: Dict[str, tk.Variable] = {}
+        self.stats_vars: Optional[Dict[str, tk.StringVar]] = None
+        
+    def setup_ui(self) -> None:
+        """Setup the main UI."""
+        # Clear parent
+        for widget in self.parent.winfo_children():
+            widget.destroy()
+        
+        # Configure parent background
+        self.parent.configure(bg=HistoryUI.COLORS['bg_primary'])
+        
+        # Main container with proper layout
+        main_container = tk.Frame(self.parent, bg=HistoryUI.COLORS['bg_primary'])
+        main_container.pack(fill=tk.BOTH, expand=True, padx=0, pady=0)
+        
+        # Top section (filters and stats)
+        top_section = tk.Frame(main_container, bg=HistoryUI.COLORS['bg_primary'])
+        top_section.pack(fill=tk.X, padx=0, pady=0)
+        
+        # Setup filter bar in top section
+        self.filter_vars = self.ui.create_filter_bar(
+            top_section,
+            on_search_change=self.refresh_data,
+            on_date_change=self.refresh_data,
+            on_refresh=lambda: self.refresh_data(force=True)
+        )
+        
+        # Setup statistics panel in top section
+        initial_stats = {'count': 0, 'total': 0.0, 'average': 0.0}
+        stats_frame, self.stats_vars = self.ui.create_statistics_panel(top_section, initial_stats)
+        
+        # Middle section (table) - expandable
+        middle_section = tk.Frame(main_container, bg=HistoryUI.COLORS['bg_primary'])
+        middle_section.pack(fill=tk.BOTH, expand=True, padx=0, pady=(0, 0))
+        
+        # Setup orders table in middle section
+        self.tree = self.ui.create_orders_table(middle_section)
+        
+        # Bind double-click to show details
+        self.tree.bind("<Double-1>", lambda e: self.show_order_details())
+        
+        # Bind single click to show details (optional, can be removed if not needed)
+        self.tree.bind("<Button-1>", lambda e: self._on_table_click(e))
+        
+        # Bottom section (buttons) - fixed at bottom
+        bottom_section = tk.Frame(main_container, bg=HistoryUI.COLORS['bg_primary'])
+        bottom_section.pack(fill=tk.X, padx=0, pady=(0, 0))
+        
+        # Setup action buttons in bottom section
+        self.setup_buttons(bottom_section)
+        
+        # Load initial data
+        self.refresh_data()
+    
+    def setup_buttons(self, parent: tk.Widget) -> None:
+        """Setup action buttons."""
+        # Create button frame
+        button_frame = tk.Frame(parent, bg=HistoryUI.COLORS['bg_primary'], padx=15, pady=12)
+        button_frame.pack(fill=tk.X, padx=10, pady=(10, 10))
+        
+        # Left side - primary actions
+        left_buttons = tk.Frame(button_frame, bg=HistoryUI.COLORS['bg_primary'])
+        left_buttons.pack(side=tk.LEFT)
+        
+        # Edit button
+        edit_btn = tk.Button(
+            left_buttons,
+            text="✏️ Bewerk & Herdruk",
+            command=self.edit_order,
+            bg=HistoryUI.COLORS['bg_success'],
+            fg="white",
+            font=("Arial", 10, "bold"),
+            relief="flat",
+            padx=20,
+            pady=8,
+            cursor="hand2"
+        )
+        edit_btn.pack(side=tk.LEFT, padx=(0, 10))
+        
+        # Reopen button (to add items without deleting old order)
+        reopen_btn = tk.Button(
+            left_buttons,
+            text="➕ Heropen Bon",
+            command=self.reopen_order,
+            bg=HistoryUI.COLORS['bg_info'],
+            fg="white",
+            font=("Arial", 10, "bold"),
+            relief="flat",
+            padx=20,
+            pady=8,
+            cursor="hand2"
+        )
+        reopen_btn.pack(side=tk.LEFT, padx=(0, 10))
+        
+        # Details button
+        details_btn = tk.Button(
+            left_buttons,
+            text="👁️ Details",
+            command=self.show_order_details,
+            bg=HistoryUI.COLORS['bg_accent'],
+            fg="white",
+            font=("Arial", 10, "bold"),
+            relief="flat",
+            padx=20,
+            pady=8,
+            cursor="hand2"
+        )
+        details_btn.pack(side=tk.LEFT, padx=(0, 10))
+        
+        # Right side - danger actions
+        right_buttons = tk.Frame(button_frame, bg=HistoryUI.COLORS['bg_primary'])
+        right_buttons.pack(side=tk.RIGHT)
+        
+        # Delete button
+        delete_btn = tk.Button(
+            right_buttons,
+            text="🗑️ Verwijder Bestelling",
+            command=self.delete_order,
+            bg=HistoryUI.COLORS['bg_danger'],
+            fg="white",
+            font=("Arial", 10, "bold"),
+            relief="flat",
+            padx=20,
+            pady=8,
+            cursor="hand2"
+        )
+        delete_btn.pack(side=tk.LEFT, padx=(0, 10))
+        
+        # Delete all button
+        delete_all_btn = tk.Button(
+            right_buttons,
+            text="⚠️ Verwijder Alles",
+            command=self.delete_all_orders,
+            bg="#8B0000",
+            fg="white",
+            font=("Arial", 10, "bold"),
+            relief="flat",
+            padx=20,
+            pady=8,
+            cursor="hand2"
+        )
+        delete_all_btn.pack(side=tk.LEFT)
+        
+        # Hover effects
+        def add_hover_effect(btn, original_color):
+            def on_enter(e):
+                btn.config(bg=HistoryUI._lighten_color(original_color))
+            
+            def on_leave(e):
+                btn.config(bg=original_color)
+            
+            btn.bind("<Enter>", on_enter)
+            btn.bind("<Leave>", on_leave)
+        
+        add_hover_effect(edit_btn, HistoryUI.COLORS['bg_success'])
+        add_hover_effect(reopen_btn, HistoryUI.COLORS['bg_info'])
+        add_hover_effect(details_btn, HistoryUI.COLORS['bg_accent'])
+        add_hover_effect(delete_btn, HistoryUI.COLORS['bg_danger'])
+        add_hover_effect(delete_all_btn, "#8B0000")
+    
+    def refresh_data(self, force: bool = False) -> None:
+        """Refresh order data and update display."""
+        if not self.tree:
+            return
+        
+        # Clear tree
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+        
+        # Get filter values
+        search_term = self.filter_vars.get("search", tk.StringVar()).get()
+        date_filter = self.filter_vars.get("date", tk.StringVar()).get()
+        
+        # Clean search term (remove placeholder)
+        if search_term == "Naam, telefoon of adres...":
+            search_term = ""
+        
+        # Get orders
+        try:
+            orders = self.service.search_orders(
+                search_term=search_term if search_term else None,
+                date_filter=date_filter if date_filter else None
+            )
+        except DatabaseError as e:
+            logger.exception("Error loading orders")
+            messagebox.showerror("Fout", str(e), parent=self.parent)
+            return
+        
+        # Add orders to tree with zebra striping
+        for idx, order in enumerate(orders):
+            adres = f"{order.get('straat', '')} {order.get('huisnummer', '')}".strip()
+            tag = "even" if idx % 2 == 0 else "odd"
+            
+            levertijd = order.get('levertijd', '') or ''
+            
+            self.tree.insert(
                 "",
                 "end",
-                iid=row['id'],
-                values=(row['datum'], row['tijd'], row['bonnummer'], row['naam'], row['telefoon'], adres,
-                        f"€ {row['totaal']:.2f}")
+                iid=order['id'],
+                values=(
+                    order['datum'],
+                    order['tijd'],
+                    order['bonnummer'],
+                    order.get('naam', ''),
+                    order.get('telefoon', ''),
+                    adres,
+                    levertijd,
+                    f"€{order['totaal']:.2f}"
+                ),
+                tags=(tag,)
             )
-
-    search_var.trace_add("write", refresh_data)
-    date_var.trace_add("write", refresh_data)
-
-    # --- Acties ---
-    def bewerk_en_herdruk_bon():
-        """Laadt een oude bestelling in het hoofdscherm om te bewerken."""
-        selected_item_id = tree.focus()
-        if not selected_item_id:
-            messagebox.showwarning("Selectie Fout", "Selecteer alstublieft een bestelling om te bewerken.", parent=root)
+        
+        # Update statistics
+        self.update_statistics(search_term, date_filter)
+    
+    def update_statistics(self, search_term: Optional[str] = None, date_filter: Optional[str] = None) -> None:
+        """Update statistics panel."""
+        if not self.stats_vars:
             return
-
+        
+        stats = self.service.get_statistics(search_term, date_filter)
+        self.stats_vars['count'].set(str(int(stats['count'])))
+        self.stats_vars['total'].set(f"€{stats['total']:.2f}")
+        self.stats_vars['average'].set(f"€{stats['average']:.2f}")
+    
+    def edit_order(self) -> None:
+        """Load selected order for editing."""
+        selected_item_id = self.tree.focus()
+        if not selected_item_id:
+            messagebox.showwarning(
+                "Selectie Fout",
+                "Selecteer alstublieft een bestelling om te bewerken.",
+                parent=self.parent
+            )
+            return
+        
         bestelling_id = int(selected_item_id)
-
+        
         if not messagebox.askyesno(
-                "Bevestigen",
-                "Weet u zeker dat u deze bestelling wilt laden om te bewerken?\n\n"
-                "De originele bestelling wordt hierbij verwijderd en vervangen door de nieuwe versie na het opslaan.",
-                icon='warning',
-                parent=root
+            "Bevestigen",
+            "Weet u zeker dat u deze bestelling wilt laden om te bewerken?\n\n"
+            "De originele bestelling wordt hierbij verwijderd en vervangen door de nieuwe versie na het opslaan.",
+            icon='warning',
+            parent=self.parent
         ):
             return
-
-        conn = database.get_db_connection()
-        cursor = conn.cursor()
+        
         try:
-            cursor.execute("""
-                           SELECT b.id,
-                                  b.bonnummer,
-                                  b.opmerking,
-                                  b.klant_id,
-                                  k.telefoon,
-                                  k.straat,
-                                  k.huisnummer,
-                                  k.plaats,
-                                  k.naam
-                           FROM bestellingen b
-                                    JOIN klanten k ON b.klant_id = k.id
-                           WHERE b.id = ?
-                           """, (bestelling_id,))
-            bestelling = cursor.fetchone()
-            if not bestelling:
-                messagebox.showerror("Fout", "Bestelling niet gevonden in de database.", parent=root)
+            order_details = self.service.get_order_details(bestelling_id)
+            if not order_details:
+                messagebox.showerror("Fout", "Bestelling niet gevonden in de database.", parent=self.parent)
                 return
-
+            
+            order = order_details['order']
+            items = order_details['items']
+            
+            # Format customer data
             klant_data = {
-                "klant_id": bestelling['klant_id'],
-                "telefoon": bestelling['telefoon'],
-                "adres": bestelling['straat'],
-                "nr": bestelling['huisnummer'],
-                "postcode_gemeente": bestelling['plaats'],
-                "opmerking": bestelling['opmerking'] or "",
-                "naam": bestelling['naam'] or ""
+                "klant_id": order['klant_id'],
+                "telefoon": order['telefoon'],
+                "adres": order['straat'],
+                "nr": order['huisnummer'],
+                "postcode_gemeente": order['plaats'],
+                "opmerking": order['opmerking'] or "",
+                "naam": order['naam'] or "",
+                "levertijd": order.get('levertijd') or None
             }
-
-            cursor.execute(
-                "SELECT categorie, product, aantal, prijs, extras FROM bestelregels WHERE bestelling_id = ?",
-                (bestelling_id,)
-            )
-            bestelregels_db = cursor.fetchall()
-
-            formatted_bestelregels = []
-            for regel in bestelregels_db:
-                formatted_bestelregels.append({
-                    'categorie': regel['categorie'],
-                    'product': regel['product'],
-                    'aantal': regel['aantal'],
-                    'prijs': regel['prijs'],
-                    'extras': json.loads(regel['extras']) if regel['extras'] else {}
+            
+            # Format order items
+            formatted_items = []
+            for item in items:
+                formatted_items.append({
+                    'categorie': item['categorie'],
+                    'product': item['product'],
+                    'aantal': item['aantal'],
+                    'prijs': item['prijs'],
+                    'extras': json.loads(item['extras']) if item.get('extras') else {},
+                    'opmerking': item.get('opmerking', '')
                 })
-
-            # Laad in hoofdscherm + verwijder oude bestelling
-            laad_bestelling_callback(klant_data, formatted_bestelregels, bestelling_id)
-
-            # Vernieuw lijst
-            refresh_data()
-
-        except Exception as e:
-            messagebox.showerror("Fout", f"Er is een fout opgetreden bij het laden van de bestelling: {e}", parent=root)
-        finally:
-            if conn:
-                conn.close()
-
-    def verwijder_bestelling():
-        """Verwijdert de geselecteerde bestelling volledig."""
-        selected_item_id = tree.focus()
+            
+            # Load in main screen
+            self.load_order_callback(klant_data, formatted_items, bestelling_id)
+            
+            # Refresh list
+            self.refresh_data(force=True)
+            
+            messagebox.showinfo(
+                "Geladen",
+                "Bestelling is geladen in het hoofdscherm. U kunt deze nu bewerken.",
+                parent=self.parent
+            )
+        except DatabaseError as e:
+            logger.exception("Error loading order for editing")
+            messagebox.showerror("Fout", f"Er is een fout opgetreden: {e}", parent=self.parent)
+    
+    def delete_order(self) -> None:
+        """Delete selected order."""
+        selected_item_id = self.tree.focus()
         if not selected_item_id:
-            messagebox.showwarning("Selectie Fout", "Selecteer een bestelling om te verwijderen.", parent=root)
+            messagebox.showwarning(
+                "Selectie Fout",
+                "Selecteer een bestelling om te verwijderen.",
+                parent=self.parent
+            )
             return
-
+        
         if not messagebox.askyesno(
-                "Zeker weten?",
-                "Weet u zeker dat u deze bestelling definitief wilt verwijderen? Dit kan niet ongedaan worden gemaakt.",
-                icon='warning',
-                parent=root
+            "Zeker weten?",
+            "Weet u zeker dat u deze bestelling definitief wilt verwijderen?\n"
+            "Dit kan niet ongedaan worden gemaakt.",
+            icon='warning',
+            parent=self.parent
         ):
             return
-
+        
         bestelling_id = int(selected_item_id)
-        conn = database.get_db_connection()
+        
         try:
-            row = conn.execute("SELECT klant_id FROM bestellingen WHERE id = ?", (bestelling_id,)).fetchone()
-            klant_id = row['klant_id'] if row else None
-
-            conn.execute("DELETE FROM bestelregels WHERE bestelling_id = ?", (bestelling_id,))
-            conn.execute("DELETE FROM bestellingen WHERE id = ?", (bestelling_id,))
-            conn.commit()
-
+            klant_id = self.service.delete_order(bestelling_id)
+            
+            # Update customer statistics if needed
             if klant_id:
-                database.update_klant_statistieken(klant_id)
-
-            messagebox.showinfo("Succes", "Bestelling succesvol verwijderd.", parent=root)
-            refresh_data()
-        except Exception as e:
-            conn.rollback()
-            messagebox.showerror("Fout", f"Kon bestelling niet verwijderen: {e}", parent=root)
-        finally:
-            conn.close()
-
-    def verwijder_alles():
-        """Verwijder alle bestellingen (incl. bestelregels) na bevestiging."""
+                from database import update_klant_statistieken
+                update_klant_statistieken(klant_id)
+            
+            messagebox.showinfo("Succes", "Bestelling succesvol verwijderd.", parent=self.parent)
+            self.refresh_data(force=True)
+        except DatabaseError as e:
+            logger.exception("Error deleting order")
+            messagebox.showerror("Fout", f"Kon bestelling niet verwijderen: {e}", parent=self.parent)
+    
+    def delete_all_orders(self) -> None:
+        """Delete all orders after confirmation."""
         if not messagebox.askyesno(
-                "Alles verwijderen?",
-                "Weet u zeker dat u ALLE bestellingen permanent wilt verwijderen?\nDit kan niet ongedaan worden gemaakt.",
-                icon='warning',
-                parent=root
+            "Alles verwijderen?",
+            "Weet u zeker dat u ALLE bestellingen permanent wilt verwijderen?\n"
+            "Dit kan niet ongedaan worden gemaakt.",
+            icon='warning',
+            parent=self.parent
         ):
             return
-
+        
         confirm = simpledialog.askstring(
             "Bevestig",
             "Typ VERWIJDER ALLES om te bevestigen:",
-            parent=root
+            parent=self.parent
         )
+        
         if (confirm or "").strip().upper() != "VERWIJDER ALLES":
-            messagebox.showinfo("Geannuleerd", "Verwijderen geannuleerd.", parent=root)
+            messagebox.showinfo("Geannuleerd", "Verwijderen geannuleerd.", parent=self.parent)
             return
-
-        conn = database.get_db_connection()
+        
         try:
-            klant_ids = [row['klant_id'] for row in conn.execute("SELECT klant_id FROM bestellingen").fetchall()]
+            klant_ids = self.service.delete_all_orders()
+            
+            # Update customer statistics
+            if klant_ids:
+                from database import update_klant_statistieken
+                for klant_id in set(klant_ids):
+                    if klant_id:
+                        update_klant_statistieken(klant_id)
+            
+            messagebox.showinfo("Gereed", "Alle bestellingen zijn verwijderd.", parent=self.parent)
+            self.refresh_data(force=True)
+        except DatabaseError as e:
+            logger.exception("Error deleting all orders")
+            messagebox.showerror("Fout", f"Kon alle bestellingen niet verwijderen: {e}", parent=self.parent)
+    
+    def _on_table_click(self, event) -> None:
+        """Handle table click event."""
+        # This can be used for single-click selection if needed
+        pass
+    
+    def show_order_details(self) -> None:
+        """Show detailed view of selected order."""
+        selected_item_id = self.tree.focus()
+        if not selected_item_id:
+            messagebox.showwarning(
+                "Selectie Fout",
+                "Selecteer een bestelling om details te bekijken.",
+                parent=self.parent
+            )
+            return
+        
+        bestelling_id = int(selected_item_id)
+        
+        try:
+            order_details = self.service.get_order_details(bestelling_id)
+            if not order_details:
+                messagebox.showerror("Fout", "Bestelling niet gevonden.", parent=self.parent)
+                return
+            
+            order = order_details['order']
+            items = order_details['items']
+            
+            # Create details window
+            details_win = tk.Toplevel(self.parent)
+            details_win.title(f"Bestelling Details - Bon {order['bonnummer']}")
+            details_win.geometry("700x600")
+            details_win.transient(self.parent)
+            details_win.configure(bg=HistoryUI.COLORS['bg_primary'])
+            
+            # Main frame with scroll
+            main_frame = tk.Frame(details_win, bg=HistoryUI.COLORS['bg_primary'], padx=20, pady=20)
+            main_frame.pack(fill=tk.BOTH, expand=True)
+            
+            # Customer info section
+            customer_frame = tk.LabelFrame(
+                main_frame,
+                text="Klantgegevens",
+                font=("Arial", 11, "bold"),
+                bg=HistoryUI.COLORS['bg_secondary'],
+                padx=15,
+                pady=10
+            )
+            customer_frame.pack(fill=tk.X, pady=(0, 15))
+            
+            customer_info = f"""
+Naam: {order.get('naam', 'N/A')}
+Telefoon: {order.get('telefoon', 'N/A')}
+Adres: {order.get('straat', '')} {order.get('huisnummer', '')}
+Plaats: {order.get('plaats', 'N/A')}
+            """.strip()
+            
+            tk.Label(
+                customer_frame,
+                text=customer_info,
+                font=("Arial", 10),
+                bg=HistoryUI.COLORS['bg_secondary'],
+                justify=tk.LEFT,
+                anchor="w"
+            ).pack(anchor="w")
+            
+            # Order info section
+            order_info_frame = tk.LabelFrame(
+                main_frame,
+                text="Bestelling Informatie",
+                font=("Arial", 11, "bold"),
+                bg=HistoryUI.COLORS['bg_secondary'],
+                padx=15,
+                pady=10
+            )
+            order_info_frame.pack(fill=tk.X, pady=(0, 15))
+            
+            levertijd = order.get('levertijd', '') or 'Niet opgegeven'
+            order_info = f"""
+Bonnummer: {order['bonnummer']}
+Datum: {order.get('datum', 'N/A')}
+Tijd: {order.get('tijd', 'N/A')}
+Levertijd: {levertijd}
+Opmerking: {order.get('opmerking', 'Geen')}
+            """.strip()
+            
+            tk.Label(
+                order_info_frame,
+                text=order_info,
+                font=("Arial", 10),
+                bg=HistoryUI.COLORS['bg_secondary'],
+                justify=tk.LEFT,
+                anchor="w"
+            ).pack(anchor="w")
+            
+            # Items section
+            items_frame = tk.LabelFrame(
+                main_frame,
+                text="Bestelde Items",
+                font=("Arial", 11, "bold"),
+                bg=HistoryUI.COLORS['bg_secondary'],
+                padx=15,
+                pady=10
+            )
+            items_frame.pack(fill=tk.BOTH, expand=True)
+            
+            # Scrollable text for items
+            items_text = tk.Text(
+                items_frame,
+                wrap=tk.WORD,
+                font=("Courier New", 10),
+                bg=HistoryUI.COLORS['bg_primary'],
+                fg=HistoryUI.COLORS['text_primary'],
+                padx=10,
+                pady=10,
+                relief="flat"
+            )
+            items_text.pack(fill=tk.BOTH, expand=True)
+            
+            # Scrollbar for items
+            items_scroll = tk.Scrollbar(items_frame, orient=tk.VERTICAL, command=items_text.yview)
+            items_text.configure(yscrollcommand=items_scroll.set)
+            items_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+            
+            # Format and display items
+            total = 0.0
+            items_text.insert(tk.END, "Bestellingsoverzicht\n")
+            items_text.insert(tk.END, "=" * 50 + "\n\n")
+            
+            for idx, item in enumerate(items, 1):
+                try:
+                    extras = json.loads(item['extras']) if item.get('extras') else {}
+                except (json.JSONDecodeError, TypeError):
+                    extras = {}
+                
+                aantal = item.get('aantal', 1)
+                prijs = float(item.get('prijs', 0))
+                regel_totaal = prijs * aantal
+                total += regel_totaal
+                
+                # Format product name
+                product_naam = item.get('product', 'Onbekend')
+                categorie = item.get('categorie', '')
+                
+                # Handle half-half pizzas
+                if extras.get('half_half') and isinstance(extras['half_half'], list):
+                    product_display = f"Half-Half: Pizza {extras['half_half'][0]}/{extras['half_half'][1]}"
+                else:
+                    # Use get_pizza_num for pizza numbers
+                    from utils.menu_utils import get_pizza_num
+                    if "pizza" in categorie.lower():
+                        nummer = get_pizza_num(product_naam)
+                        product_display = f"Pizza {nummer}"
+                    else:
+                        product_display = product_naam
+                
+                items_text.insert(tk.END, f"[{idx}] {product_display}\n")
+                items_text.insert(tk.END, f"    Categorie: {categorie}\n")
+                items_text.insert(tk.END, f"    Aantal: {aantal} x €{prijs:.2f} = €{regel_totaal:.2f}\n")
+                
+                # Display extras
+                if extras:
+                    items_text.insert(tk.END, "    Extras:\n")
+                    for key, value in extras.items():
+                        if key == 'half_half':
+                            continue  # Already shown
+                        if key == 'sauzen_toeslag':
+                            try:
+                                items_text.insert(tk.END, f"      • Sauzen extra: €{float(value):.2f}\n")
+                            except (ValueError, TypeError):
+                                pass
+                        elif isinstance(value, list):
+                            items_text.insert(tk.END, f"      • {key}: {', '.join(map(str, value))}\n")
+                        elif value:
+                            items_text.insert(tk.END, f"      • {key}: {value}\n")
+                
+                # Display item note if present
+                if item.get('opmerking'):
+                    items_text.insert(tk.END, f"    Opmerking: {item['opmerking']}\n")
+                
+                items_text.insert(tk.END, "\n")
+            
+            items_text.insert(tk.END, "=" * 50 + "\n")
+            items_text.insert(tk.END, f"Totaal: €{total:.2f}\n")
+            
+            items_text.config(state=tk.DISABLED)
+            
+            # Close button
+            close_btn = tk.Button(
+                details_win,
+                text="Sluiten",
+                command=details_win.destroy,
+                bg=HistoryUI.COLORS['bg_accent'],
+                fg="white",
+                font=("Arial", 10, "bold"),
+                relief="flat",
+                padx=30,
+                pady=8
+            )
+            close_btn.pack(pady=10)
+        except DatabaseError as e:
+            logger.exception("Error showing order details")
+            messagebox.showerror("Fout", f"Er is een fout opgetreden: {e}", parent=self.parent)
+    
+    def reopen_order(self) -> None:
+        """Reopen order to add items without deleting the original order."""
+        selected_item_id = self.tree.focus()
+        if not selected_item_id:
+            messagebox.showwarning(
+                "Selectie Fout",
+                "Selecteer een bestelling om te heropenen.",
+                parent=self.parent
+            )
+            return
+        
+        bestelling_id = int(selected_item_id)
+        
+        if not messagebox.askyesno(
+            "Bon Heropenen",
+            "Wilt u deze bon heropenen om items toe te voegen?\n\n"
+            "De originele bestelling blijft behouden. Nieuwe items worden toegevoegd aan een nieuwe bestelling.",
+            icon='question',
+            parent=self.parent
+        ):
+            return
+        
+        try:
+            order_details = self.service.get_order_details(bestelling_id)
+            if not order_details:
+                messagebox.showerror("Fout", "Bestelling niet gevonden in de database.", parent=self.parent)
+                return
+            
+            order = order_details['order']
+            items = order_details['items']
+            
+            # Format customer data
+            klant_data = {
+                "klant_id": order['klant_id'],
+                "telefoon": order['telefoon'],
+                "adres": order['straat'],
+                "nr": order['huisnummer'],
+                "postcode_gemeente": order['plaats'],
+                "opmerking": "",  # Start with empty note for new order
+                "naam": order['naam'] or "",
+                "levertijd": order.get('levertijd') or None
+            }
+            
+            # Format order items (empty list - user can add new items)
+            formatted_items = []
+            
+            # Load in main screen WITHOUT the old order ID (so it creates a new order)
+            self.load_order_callback(klant_data, formatted_items, None)
+            
+            messagebox.showinfo(
+                "Heropend",
+                "Bon is heropend met klantgegevens. U kunt nu nieuwe items toevoegen.\n\n"
+                "De originele bestelling blijft behouden.",
+                parent=self.parent
+            )
+        except DatabaseError as e:
+            logger.exception("Error reopening order")
+            messagebox.showerror("Fout", f"Er is een fout opgetreden: {e}", parent=self.parent)
 
-            conn.execute("DELETE FROM bestelregels")
-            conn.execute("DELETE FROM bestellingen")
-            conn.commit()
 
-            for kid in set(klant_ids):
-                if kid:
-                    database.update_klant_statistieken(kid)
-
-            messagebox.showinfo("Gereed", "Alle bestellingen zijn verwijderd.", parent=root)
-            refresh_data()
-        except Exception as e:
-            conn.rollback()
-            messagebox.showerror("Fout", f"Kon alle bestellingen niet verwijderen: {e}", parent=root)
-        finally:
-            conn.close()
-
-    # --- Knoppen (zorg dat dit NIET in een functie staat) ---
-    try:
-        bewerk_icon = tk.PhotoImage(file="icons/edit.png")
-        verwijder_icon = tk.PhotoImage(file="icons/delete.png")
-        verwijder_alles_icon = tk.PhotoImage(file="icons/delete_all.png")
-        bottom_frame._icons = (bewerk_icon, verwijder_icon, verwijder_alles_icon)
-    except Exception:
-        bewerk_icon = verwijder_icon = verwijder_alles_icon = None
-
-    tk.Button(
-        bottom_frame,
-        text="Bewerk & Herdruk",
-        image=bewerk_icon, compound="left",
-        command=bewerk_en_herdruk_bon, bg="#D1FFD1"
-    ).pack(side=tk.LEFT, padx=10, pady=5)
-
-    tk.Button(
-        bottom_frame,
-        text="Verwijder Bestelling",
-        image=verwijder_icon, compound="left",
-        command=verwijder_bestelling, bg="#FFADAD"
-    ).pack(side=tk.RIGHT, padx=10, pady=5)
-
-    tk.Button(
-        bottom_frame,
-        text="Verwijder Alles",
-        image=verwijder_alles_icon, compound="left",
-        command=verwijder_alles, bg="#FF6B6B"
-    ).pack(side=tk.RIGHT, padx=10, pady=5)
-
-    # --- Start ---
-    refresh_data()
+def open_geschiedenis(
+    root: tk.Widget,
+    menu_data_global: Dict[str, Any],
+    extras_data_global: Dict[str, Any],
+    app_settings_global: Dict[str, Any],
+    laad_bestelling_callback: Callable
+) -> None:
+    """
+    Open order history interface.
+    
+    Args:
+        root: Root widget (tab frame)
+        menu_data_global: Menu data dictionary
+        extras_data_global: Extras data dictionary
+        app_settings_global: Application settings
+        laad_bestelling_callback: Callback to load order for editing
+    """
+    manager = HistoryManager(
+        root,
+        menu_data_global,
+        extras_data_global,
+        app_settings_global,
+        laad_bestelling_callback
+    )
+    manager.setup_ui()

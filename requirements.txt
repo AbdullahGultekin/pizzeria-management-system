@@ -1,0 +1,18 @@
+# Core dependencies
+Pillow>=10.0.0,<11.0.0  # Image processing (PIL)
+qrcode[pil]>=7.4.0,<8.0.0  # QR code generation
+requests>=2.31.0  # HTTP requests (for Webex API integration)
+
+# Windows-specific (optional, only needed on Windows)
+pywin32>=306; sys_platform == 'win32'  # Windows printer support
+
+# Testing dependencies
+pytest>=7.4.0
+pytest-cov>=4.1.0
+pytest-mock>=3.11.0
+
+# Development dependencies (optional)
+# pyinstaller>=5.0.0  # For building executables
+# mypy>=1.0.0  # Type checking
+# black>=23.0.0  # Code formatting
+

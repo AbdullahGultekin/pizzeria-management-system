@@ -1,505 +1,556 @@
+"""
+Courier Management Module
+
+This module provides the main interface for managing couriers and assigning orders.
+"""
+
 import tkinter as tk
 from tkinter import ttk, messagebox
-import datetime
-import database
-import sqlite3
+from datetime import date, datetime
+from typing import Dict, List, Optional
+from database import DatabaseContext
+from logging_config import get_logger
+from exceptions import DatabaseError
+from modules.courier_config import STARTGELD, CARD_COLORS
+from modules.courier_service import CourierService
+from modules.courier_ui import CourierUI
 
-def open_koeriers(root):
-    STARTGELD = 31.0
-    KM_TARIEF = 0.25
-    UUR_TARIEF = 10.0
-
-    win = root
-    for w in win.winfo_children():
-        w.destroy()
-
-    paned = tk.PanedWindow(win, orient=tk.HORIZONTAL, sashrelief=tk.RAISED, sashpad=4)
-    paned.pack(fill=tk.BOTH, expand=True)
-
-    # --- Data ophalen ---
-    conn = database.get_db_connection()
-    koeriers_data = {row['naam']: row['id'] for row in conn.execute("SELECT id, naam FROM koeriers ORDER BY naam").fetchall()}
-    koeriers = list(koeriers_data.keys())
-    conn.close()
-
-    left = tk.Frame(paned, padx=10, pady=10)
-    paned.add(left, minsize=400)
-
-    # Filterbalk
-    filter_frame = tk.Frame(left)
-    filter_frame.pack(fill=tk.X, pady=(0, 6))
-    tk.Label(filter_frame, text="Zoek:", font=("Arial", 10, "bold")).pack(side=tk.LEFT)
-    search_var = tk.StringVar()
-    search_entry = tk.Entry(filter_frame, textvariable=search_var, width=12)
-    search_entry.pack(side=tk.LEFT, padx=(6, 12))
-    tk.Label(filter_frame, text="Koerier:", font=("Arial", 10, "bold")).pack(side=tk.LEFT)
-    filter_koerier_var = tk.StringVar(value="Alle")
-    koerier_opt = ttk.Combobox(filter_frame, state="readonly", values=["Alle"] + koeriers, textvariable=filter_koerier_var, width=12)
-    koerier_opt.pack(side=tk.LEFT, padx=(6, 12))
-    tk.Label(filter_frame, text="Datum:", font=("Arial", 10, "bold")).pack(side=tk.LEFT)
-    datum_var = tk.StringVar(value=datetime.date.today().strftime('%Y-%m-%d'))
-    datum_entry = tk.Entry(filter_frame, textvariable=datum_var, width=12)
-    datum_entry.pack(side=tk.LEFT, padx=(6, 12))
-    tk.Button(filter_frame, text="Herlaad", command=lambda: laad_bestellingen(True), bg="#E1E1FF").pack(side=tk.LEFT)
-
-    # Tabel
-    cols = ("tijd", "adres", "nr", "gemeente", "tel", "totaal", "koerier")
-    headers = {
-        "tijd": "Tijd",
-        "adres": "Adres",
-        "nr": "Nr",
-        "gemeente": "Gemeente",
-        "tel": "Tel",
-        "totaal": "Totaal (€)",
-        "koerier": "Koerier"
-    }
-    widths = {"tijd": 70, "adres": 240, "nr": 50, "gemeente": 150, "tel": 120, "totaal": 90, "koerier": 140}
-    tree = ttk.Treeview(left, columns=cols, show="headings", height=18)
-    for c in cols:
-        tree.heading(c, text=headers[c])
-        tree.column(c, width=widths[c], anchor="w" if c not in ("totaal", "tijd") else ("center" if c == "tijd" else "e"))
-
-    scroll_y = ttk.Scrollbar(left, orient=tk.VERTICAL, command=tree.yview)
-    tree.configure(yscrollcommand=scroll_y.set)
-    tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-    scroll_y.pack(side=tk.LEFT, fill=tk.Y)
-
-    # --- Styles ---
-    style = ttk.Style(tree)
-    style.map("Treeview")
-    tree.tag_configure("row_a", background="#E6EBFF")      # zebra lichtblauw
-    tree.tag_configure("row_b", background="#FFFFFF")      # zebra wit
-    tree.tag_configure("unassigned", background="#FFEB99") # geel
-
-    # Dynamische kleur per koerier
-    CARD_COLORS = [
-        "#E3F2FD", "#FFF3CD", "#E8F5E9", "#F3E5F5",
-        "#FFEDE7", "#EDE7F6", "#E0F7FA", "#FFF8E1"
-    ]
-    KOERIER_ROW_COLORS = {naam: CARD_COLORS[i % len(CARD_COLORS)] for i, naam in enumerate(koeriers)}
+logger = get_logger("pizzeria.koeriers")
 
 
-
-    # --- Live filters ---
-    search_var.trace_add("write", lambda *_: laad_bestellingen())
-    filter_koerier_var.trace_add("write", lambda *_: laad_bestellingen())
-    datum_var.trace_add("write", lambda *_: laad_bestellingen())
-
-    # --- Selectielabel ---
-    btns = tk.Frame(left)
-    btns.pack(fill=tk.X, pady=(8, 0))
-    geselecteerd_lbl = tk.Label(btns, text="Geen selectie", fg="#666")
-    geselecteerd_lbl.pack(side=tk.RIGHT)
-
-    def update_geselecteerd_lbl(*_):
-        n = len(tree.selection())
-        geselecteerd_lbl.config(text=f"{n} geselecteerd" if n else "Geen selectie")
-
-    tree.bind("<<TreeviewSelect>>", update_geselecteerd_lbl)
-
-
-
-
-    # ===================== RECHTERZIJDE: KOERIERS + AFREKENING =====================
-    right = tk.Frame(paned, padx=10, pady=10)
-    paned.add(right, minsize=1100)
-
-    tk.Label(right, text="Koeriers", font=("Arial", 13, "bold")).pack(anchor="w")
-
-    # Palet met vaste, onderscheidende kleuren
-    KOERIER_ROW_COLORS = {}
-    CARD_COLORS = [
-        ("#FFF3CD", "#7A5E00"),
-        ("#E3F2FD", "#0D47A1"),
-        ("#E8F5E9", "#1B5E20"),
-        ("#F3E5F5", "#4A148C"),
-        ("#FFEDE7", "#BF360C"),
-        ("#EDE7F6", "#283593"),
-        ("#E0F7FA", "#006064"),
-        ("#FFF8E1", "#8D6E63"),
-    ]
-    for i, naam in enumerate(koeriers):
-        KOERIER_ROW_COLORS[naam] = CARD_COLORS[i % len(CARD_COLORS)][0]
-
-    # Koerier-kaarten
-    koerier_cards = tk.Frame(right)
-    koerier_cards.pack(fill=tk.X)
-
-    totals_var = {k: tk.DoubleVar(value=0.0) for k in koeriers}
-
-    # Koppel koerier -> rijkleur (zacht tintje)
-    KOERIER_ROW_COLORS.clear()
-    for i, naam in enumerate(koeriers):
-        KOERIER_ROW_COLORS[naam] = CARD_COLORS[i % len(CARD_COLORS)][0]
-
-    def initials(name: str) -> str:
-        parts = [p for p in name.split() if p.strip()]
-        if not parts:
-            return "?"
-        if len(parts) == 1:
-            return parts[0][:2].upper()
-        return (parts[0][0] + parts[-1][0]).upper()
-
-    def render_koerier_cards():
-        for w in koerier_cards.winfo_children():
+class CourierManager:
+    """Main manager class for courier management interface."""
+    
+    def __init__(self, parent: tk.Widget):
+        """
+        Initialize courier manager.
+        
+        Args:
+            parent: Parent widget (tab frame)
+        """
+        self.parent = parent
+        self.service = CourierService()
+        self.courier_data: Dict[str, int] = {}
+        self.courier_names: List[str] = []
+        self.ui: Optional[CourierUI] = None
+        
+        # UI components
+        self.paned: Optional[tk.PanedWindow] = None
+        self.left_frame: Optional[tk.Frame] = None
+        self.right_frame: Optional[tk.Frame] = None
+        self.tree: Optional[ttk.Treeview] = None
+        self.filter_vars: Dict[str, tk.Variable] = {}
+        
+        # Variables for totals and calculations
+        self.totals_var: Dict[str, tk.DoubleVar] = {}
+        self.eind_totals_var: Dict[str, tk.DoubleVar] = {}
+        self.extra_km_var: Dict[str, tk.DoubleVar] = {}
+        self.extra_uur_var: Dict[str, tk.DoubleVar] = {}
+        self.extra_bedrag_var: Dict[str, tk.DoubleVar] = {}
+        self.afrekening_var: Dict[str, tk.DoubleVar] = {}
+        self.subtotaal_totaal_var: Optional[tk.DoubleVar] = None
+        self.totaal_betaald_var: Optional[tk.DoubleVar] = None
+        
+        # Management UI
+        self.new_koerier_entry: Optional[tk.Entry] = None
+        self.del_combo: Optional[ttk.Combobox] = None
+        self.courier_cards_frame: Optional[tk.Frame] = None
+        self.totals_frame: Optional[tk.Frame] = None
+    
+    def load_couriers(self) -> None:
+        """Load couriers from database and initialize variables."""
+        try:
+            self.courier_data = self.service.get_all_couriers()
+            self.courier_names = sorted(list(self.courier_data.keys()), key=str.lower)
+            
+            # Initialize variables for each courier
+            for naam in self.courier_names:
+                if naam not in self.totals_var:
+                    self.totals_var[naam] = tk.DoubleVar(value=0.0)
+                    self.eind_totals_var[naam] = tk.DoubleVar(value=0.0)
+                    self.extra_km_var[naam] = tk.DoubleVar(value=0.0)
+                    self.extra_uur_var[naam] = tk.DoubleVar(value=0.0)
+                    self.extra_bedrag_var[naam] = tk.DoubleVar(value=0.0)
+                    self.afrekening_var[naam] = tk.DoubleVar(value=0.0)
+            
+            # Remove variables for deleted couriers
+            for naam in list(self.totals_var.keys()):
+                if naam not in self.courier_names:
+                    del self.totals_var[naam]
+                    del self.eind_totals_var[naam]
+                    del self.extra_km_var[naam]
+                    del self.extra_uur_var[naam]
+                    del self.extra_bedrag_var[naam]
+                    del self.afrekening_var[naam]
+        except DatabaseError as e:
+            logger.exception("Error loading couriers")
+            messagebox.showerror("Fout", str(e))
+    
+    def setup_ui(self) -> None:
+        """Setup the main UI."""
+        # Clear parent
+        for w in self.parent.winfo_children():
             w.destroy()
-        for i, naam in enumerate(koeriers):
-            bg, fg = CARD_COLORS[i % len(CARD_COLORS)]
-            card = tk.Frame(koerier_cards, bd=1, relief="groove", padx=10, pady=8, bg=bg, highlightthickness=0)
-            card.grid(row=i // 2, column=i % 2, padx=6, pady=6, sticky="ew")
-            card.grid_columnconfigure(1, weight=1)
-
-            # “Avatar” met initialen
-            avatar = tk.Canvas(card, width=34, height=34, bg=bg, highlightthickness=0)
-            avatar.grid(row=0, column=0, rowspan=2, padx=(0, 8))
-            avatar.create_oval(2, 2, 32, 32, fill=fg, outline=fg)
-            avatar.create_text(17, 17, text=initials(naam), fill=bg, font=("Arial", 10, "bold"))
-
-            name_lbl = tk.Label(card, text=naam, font=("Arial", 11, "bold"), bg=bg, fg=fg, anchor="w", wraplength=180)
-            name_lbl.grid(row=0, column=1, sticky="w")
-
+        
+        # Create paned window
+        self.paned = tk.PanedWindow(self.parent, orient=tk.HORIZONTAL, sashrelief=tk.RAISED, sashpad=4)
+        self.paned.pack(fill=tk.BOTH, expand=True)
+        
+        # Create left and right frames
+        self.left_frame = tk.Frame(self.paned, padx=10, pady=10)
+        self.paned.add(self.left_frame, minsize=400)
+        
+        self.right_frame = tk.Frame(self.paned, padx=10, pady=10)
+        self.paned.add(self.right_frame, minsize=1100)
+        
+        # Initialize UI helper
+        self.ui = CourierUI(self.parent, self.courier_names)
+        
+        # Setup components
+        self.setup_filters()
+        self.setup_table()
+        self.setup_right_panel()
+        
+        # Load initial data
+        self.load_orders()
+    
+    def setup_filters(self) -> None:
+        """Setup filter bar."""
+        self.filter_vars = self.ui.create_filter_bar(
+            self.left_frame,
+            on_search_change=self.load_orders,
+            on_koerier_change=self.load_orders,
+            on_date_change=self.load_orders,
+            on_reload=lambda: self.load_orders(force=True)
+        )
+    
+    def setup_table(self) -> None:
+        """Setup orders table."""
+        self.tree = self.ui.create_orders_table(self.left_frame)
+        
+        # Selection label
+        btns = tk.Frame(self.left_frame)
+        btns.pack(fill=tk.X, pady=(8, 0))
+        geselecteerd_lbl = tk.Label(btns, text="Geen selectie", fg="#666")
+        geselecteerd_lbl.pack(side=tk.RIGHT)
+        
+        def update_selection_label(*_):
+            n = len(self.tree.selection())
+            geselecteerd_lbl.config(text=f"{n} geselecteerd" if n else "Geen selectie")
+        
+        self.tree.bind("<<TreeviewSelect>>", update_selection_label)
+    
+    def setup_right_panel(self) -> None:
+        """Setup right panel with courier cards and settlement."""
+        tk.Label(self.right_frame, text="Koeriers", font=("Arial", 13, "bold")).pack(anchor="w")
+        
+        # Courier cards
+        self.courier_cards_frame = tk.Frame(self.right_frame)
+        self.courier_cards_frame.pack(fill=tk.X)
+        self.ui.create_courier_cards(self.courier_cards_frame, self.assign_courier)
+        
+        # Management frame
+        self.setup_management_frame()
+        
+        # Settlement frame
+        self.setup_settlement_frame()
+    
+    def setup_management_frame(self) -> None:
+        """Setup courier management frame."""
+        manage_frame = tk.LabelFrame(self.right_frame, text="Koeriers beheren", padx=8, pady=8)
+        manage_frame.pack(fill=tk.X, pady=(8, 8))
+        
+        self.new_koerier_entry = tk.Entry(manage_frame, font=("Arial", 10))
+        self.new_koerier_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        
+        tk.Button(
+            manage_frame,
+            text="Toevoegen",
+            command=self.add_courier,
+            bg="#D1FFD1"
+        ).pack(side=tk.LEFT, padx=6)
+        
+        del_name_var = tk.StringVar(value=self.courier_names[0] if self.courier_names else "")
+        self.del_combo = ttk.Combobox(
+            manage_frame,
+            values=self.courier_names,
+            textvariable=del_name_var,
+            width=12,
+            state="readonly"
+        )
+        self.del_combo.pack(side=tk.LEFT, padx=6)
+        
+        tk.Button(
+            manage_frame,
+            text="Verwijderen",
+            command=lambda: self.delete_courier(del_name_var.get()),
+            bg="#FFD1D1"
+        ).pack(side=tk.LEFT)
+    
+    def setup_settlement_frame(self) -> None:
+        """Setup settlement frame."""
+        self.totals_frame = tk.LabelFrame(
+            self.right_frame,
+            text="Afrekening per koerier",
+            padx=8,
+            pady=8,
+            bg="#F3F6FC"
+        )
+        self.totals_frame.pack(fill=tk.X)
+        
+        # Headers
+        headers = [
+            "Koerier",
+            "Subtotaal (€)",
+            f"+ Startgeld (€{STARTGELD:.2f})",
+            "Eindtotaal (€)",
+            "Km",
+            "Uur",
+            "Extra €",
+            "Definitief (€)"
+        ]
+        for col, header_text in enumerate(headers):
             tk.Label(
-                card, textvariable=totals_var[naam], font=("Arial", 10, "bold"),
-                fg=fg, bg=bg
-            ).grid(row=1, column=1, sticky="w")
-
-            btn = tk.Button(
-                card, text="Wijs selectie toe", command=lambda n=naam: wijs_koerier_toe(n),
-                bg="#FFFFFF", fg=fg, font=("Arial", 10, "bold"), relief="raised", bd=1, activebackground="#FFF"
-            )
-            btn.grid(row=0, column=2, rowspan=2, padx=(8, 0))
-
-            # Hover/active effect voor betere affordance
-            def on_enter(e, b=btn):
-                b.configure(bg="#F5F5F5")
-
-            def on_leave(e, b=btn):
-                b.configure(bg="#FFFFFF")
-
-            btn.bind("<Enter>", on_enter)
-            btn.bind("<Leave>", on_leave)
-
-    render_koerier_cards()
-
-    # Nieuwe koerier toevoegen/verwijderen (compact)
-    manage_frame = tk.LabelFrame(right, text="Koeriers beheren", padx=8, pady=8)
-    manage_frame.pack(fill=tk.X, pady=(8, 8))
-    new_koerier_entry = tk.Entry(manage_frame, font=("Arial", 10))
-    new_koerier_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
-
-    # Definieer helpers die door knoppen gebruikt worden
-    def voeg_koerier_toe():
-        nonlocal koeriers, koeriers_data
-        naam = new_koerier_entry.get().strip()
-        if not naam:
-            messagebox.showwarning("Invoerfout", "Voer een naam in voor de nieuwe koerier.")
+                self.totals_frame,
+                text=header_text,
+                font=("Arial", 10, "bold"),
+                anchor="w",
+                bg="#D2F2FF"
+            ).grid(row=0, column=col, sticky="we", padx=5, pady=2)
+        
+        # Rows for each courier
+        for i, naam in enumerate(self.courier_names, start=1):
+            bg_light, fg_dark = CARD_COLORS[(i - 1) % len(CARD_COLORS)]
+            
+            tk.Label(
+                self.totals_frame,
+                text=naam,
+                anchor="w",
+                bg=bg_light,
+                fg=fg_dark,
+                font=("Arial", 10, "bold")
+            ).grid(row=i, column=0, sticky="we", padx=5)
+            
+            tk.Label(
+                self.totals_frame,
+                textvariable=self.totals_var[naam],
+                anchor="e",
+                bg=bg_light,
+                fg=fg_dark,
+                font=("Arial", 10)
+            ).grid(row=i, column=1, sticky="e", padx=5)
+            
+            tk.Label(
+                self.totals_frame,
+                text=f"{STARTGELD:.2f}",
+                anchor="e",
+                bg=bg_light,
+                fg=fg_dark,
+                font=("Arial", 10)
+            ).grid(row=i, column=2, sticky="e", padx=5)
+            
+            tk.Label(
+                self.totals_frame,
+                textvariable=self.eind_totals_var[naam],
+                font=("Arial", 10, "bold"),
+                anchor="e",
+                bg=bg_light,
+                fg=fg_dark
+            ).grid(row=i, column=3, sticky="e", padx=5)
+            
+            entry_bg = "#FFFFFF"
+            tk.Entry(
+                self.totals_frame,
+                textvariable=self.extra_km_var[naam],
+                font=("Arial", 10, "bold"),
+                width=7,
+                justify="right",
+                bg=entry_bg,
+                relief="groove",
+                borderwidth=2
+            ).grid(row=i, column=4, padx=2)
+            
+            tk.Entry(
+                self.totals_frame,
+                textvariable=self.extra_uur_var[naam],
+                font=("Arial", 10, "bold"),
+                width=5,
+                justify="right",
+                bg=entry_bg,
+                relief="groove",
+                borderwidth=2
+            ).grid(row=i, column=5, padx=2)
+            
+            tk.Entry(
+                self.totals_frame,
+                textvariable=self.extra_bedrag_var[naam],
+                font=("Arial", 10, "bold"),
+                width=6,
+                justify="right",
+                bg=entry_bg,
+                relief="groove",
+                borderwidth=2
+            ).grid(row=i, column=6, padx=2)
+            
+            tk.Label(
+                self.totals_frame,
+                textvariable=self.afrekening_var[naam],
+                font=("Arial", 11, "bold"),
+                fg=fg_dark,
+                bg=bg_light
+            ).grid(row=i, column=7, padx=4, sticky="e")
+            
+            # Bind recalculation
+            def make_recalc(naam_in):
+                def recalc(*_):
+                    self.recalculate_payment(naam_in)
+                    self.recalculate_total_payment()
+                return recalc
+            
+            for var in (
+                self.extra_km_var[naam],
+                self.extra_uur_var[naam],
+                self.extra_bedrag_var[naam],
+                self.totals_var[naam],
+                self.eind_totals_var[naam]
+            ):
+                var.trace_add("write", make_recalc(naam))
+        
+        # Total rows
+        subtotal_row = len(self.courier_names) + 1
+        self.subtotaal_totaal_var = tk.DoubleVar(value=0)
+        tk.Label(
+            self.totals_frame,
+            text="Totaal Bestellingen",
+            font=("Arial", 11, "bold"),
+            anchor="e",
+            bg="#D2F2FF"
+        ).grid(row=subtotal_row, column=0, sticky="ew", padx=5, pady=(8, 4))
+        
+        tk.Label(
+            self.totals_frame,
+            textvariable=self.subtotaal_totaal_var,
+            font=("Arial", 11, "bold"),
+            anchor="e",
+            bg="#D2F2FF"
+        ).grid(row=subtotal_row, column=1, sticky="ew", padx=5, pady=(8, 4))
+        
+        total_row = len(self.courier_names) + 2
+        self.totaal_betaald_var = tk.DoubleVar(value=0)
+        tk.Label(
+            self.totals_frame,
+            text="Totaal uitbetaling aan koeriers (€):",
+            font=("Arial", 12, "bold"),
+            fg="#225722",
+            bg="#EAFCD5",
+            relief="ridge"
+        ).grid(row=total_row, column=0, columnspan=6, sticky="e", padx=8, pady=(10, 4))
+        
+        tk.Label(
+            self.totals_frame,
+            textvariable=self.totaal_betaald_var,
+            font=("Arial", 14, "bold"),
+            fg="#268244",
+            bg="#EAFCD5",
+            relief="ridge"
+        ).grid(row=total_row, column=6, columnspan=2, sticky="e", padx=8, pady=(10, 4))
+        
+        for colindex in range(8):
+            self.totals_frame.grid_columnconfigure(colindex, weight=1)
+    
+    def load_orders(self, force: bool = False) -> None:
+        """Load and display orders."""
+        if not self.tree:
             return
+        
+        # Clear tree
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+        
+        # Get date
+        datum_str = self.filter_vars.get("datum", tk.StringVar(value=date.today().strftime('%Y-%m-%d'))).get()
         try:
-            conn = database.get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute("INSERT INTO koeriers (naam) VALUES (?)", (naam,))
-            conn.commit()
-            messagebox.showinfo("Succes", f"Koerier '{naam}' is succesvol toegevoegd.")
-            # herlaad UI-data
-            conn2 = database.get_db_connection()
-            koeriers_data = {row['naam']: row['id'] for row in
-                             conn2.execute("SELECT id, naam FROM koeriers ORDER BY naam").fetchall()}
-            conn2.close()
-            koeriers = sorted(list(koeriers_data.keys()), key=str.lower)
-            render_koerier_cards()
-            del_combo['values'] = koeriers
-            if koeriers:
-                del_combo.set(koeriers[0])
-            totals_var[naam] = tk.DoubleVar(value=0)
-            eind_totals_var[naam] = tk.DoubleVar(value=0)
-            extra_km_var[naam] = tk.DoubleVar(value=0)
-            extra_uur_var[naam] = tk.DoubleVar(value=0)
-            extra_bedrag_var[naam] = tk.DoubleVar(value=0)
-            afrekening_var[naam] = tk.DoubleVar(value=0)
-            laad_bestellingen(True)
-        except sqlite3.IntegrityError:
-            messagebox.showwarning("Fout", f"Koerier '{naam}' bestaat al.")
-        except Exception as e:
-            messagebox.showerror("Database Fout", f"Kon koerier niet toevoegen: {e}")
-        finally:
-            try:
-                conn.close()
-            except:
-                pass
-
-    def verwijder_koerier(naam):
-        nonlocal koeriers, koeriers_data  # verplaatst naar boven, slechts één keer
-        if not naam:
-            messagebox.showwarning("Selectie", "Kies eerst een koerier om te verwijderen.")
-            return
-        if not messagebox.askyesno("Bevestigen", f"Weet u zeker dat u '{naam}' wilt verwijderen?"):
-            return
-        koerier_id = koeriers_data.get(naam)
-        if koerier_id is None:
-            messagebox.showerror("Fout", "Koerier niet gevonden in de data.")
-            return
-        conn = database.get_db_connection()
-        cursor = conn.cursor()
+            order_date = datetime.strptime(datum_str, '%Y-%m-%d').date()
+        except ValueError:
+            order_date = date.today()
+        
+        # Get orders
         try:
-            cursor.execute("SELECT COUNT(*) FROM bestellingen WHERE koerier_id = ?", (koerier_id,))
-            count = cursor.fetchone()[0]
-            if count > 0:
-                messagebox.showerror("Fout",
-                                     f"Kan '{naam}' niet verwijderen. De koerier is nog aan {count} bestelling(en) toegewezen.")
-                return
-            cursor.execute("DELETE FROM koeriers WHERE id = ?", (koerier_id,))
-            conn.commit()
-            messagebox.showinfo("Succes", f"Koerier '{naam}' is verwijderd.")
-            # verwijder uit lokale structuren en refresh UI
-            del koeriers_data[naam]
-            koeriers = sorted(list(koeriers_data.keys()), key=str.lower)
-            del_combo['values'] = koeriers
-            if koeriers:
-                del_combo.set(koeriers[0])
-            for d in (totals_var, eind_totals_var, extra_km_var, extra_uur_var, extra_bedrag_var, afrekening_var):
-                d.pop(naam, None)
-            render_koerier_cards()
-            laad_bestellingen(True)
-        except Exception as e:
-            messagebox.showerror("Database Fout", f"Kon koerier niet verwijderen: {e}")
-        finally:
-            conn.close()
-
-    tk.Button(manage_frame, text="Toevoegen", command=lambda: voeg_koerier_toe(), bg="#D1FFD1").pack(side=tk.LEFT,
-                                                                                                     padx=6)
-    del_name_var = tk.StringVar(value=koeriers[0] if koeriers else "")
-    del_combo = ttk.Combobox(manage_frame, values=koeriers, textvariable=del_name_var, width=12, state="readonly")
-    del_combo.pack(side=tk.LEFT, padx=6)
-    tk.Button(manage_frame, text="Verwijderen", command=lambda: verwijder_koerier(del_name_var.get()),
-              bg="#FFD1D1").pack(side=tk.LEFT)
-
-    # Afrekening
-    totals_frame = tk.LabelFrame(right, text="Afrekening per koerier", padx=8, pady=8, bg="#F3F6FC")
-    totals_frame.pack(fill=tk.X)
-
-    headers_afrekening = [
-        "Koerier", "Subtotaal (€)", f"+ Startgeld (€{STARTGELD:.2f})", "Eindtotaal (€)",
-        "Km", "Uur", "Extra €", "Definitief (€)"
-    ]
-    for col, header_text in enumerate(headers_afrekening):
-        tk.Label(totals_frame, text=header_text, font=("Arial", 10, "bold"), anchor="w", bg="#D2F2FF"
-                 ).grid(row=0, column=col, sticky="we", padx=5, pady=2)
-
-    eind_totals_var = {k: tk.DoubleVar(value= 0) for k in koeriers}
-    extra_km_var = {k: tk.DoubleVar(value=0) for k in koeriers}
-    extra_uur_var = {k: tk.DoubleVar(value=0) for k in koeriers}
-    extra_bedrag_var = {k: tk.DoubleVar(value=0) for k in koeriers}
-    afrekening_var = {k: tk.DoubleVar(value=0) for k in koeriers}
-    subtotaal_totaal_var = tk.DoubleVar(value=0)
-    totaal_betaald_var = tk.DoubleVar(value=0)
-
-    # Rij-achtergrond per koerier in zelfde kleurfamilie
-    for i, naam in enumerate(koeriers, start=1):
-        bg_light, fg_dark = CARD_COLORS[(i - 1) % len(CARD_COLORS)]
-        tk.Label(totals_frame, text=naam, anchor="w", bg=bg_light, fg=fg_dark, font=("Arial", 10, "bold")
-                 ).grid(row=i, column=0, sticky="we", padx=5)
-        tk.Label(totals_frame, textvariable=totals_var[naam], anchor="e", bg=bg_light, fg=fg_dark, font=("Arial", 10)
-                 ).grid(row=i, column=1, sticky="e", padx=5)
-        tk.Label(totals_frame, text=f"{STARTGELD:.2f}", anchor="e", bg=bg_light, fg=fg_dark, font=("Arial", 10)
-                 ).grid(row=i, column=2, sticky="e", padx=5)
-        tk.Label(totals_frame, textvariable=eind_totals_var[naam], font=("Arial", 10, "bold"),
-                 anchor="e", bg=bg_light, fg=fg_dark
-                 ).grid(row=i, column=3, sticky="e", padx=5)
-        entry_bg = "#FFFFFF"
-        tk.Entry(totals_frame, textvariable=extra_km_var[naam], font=("Arial", 10, "bold"), width=7, justify="right",
-                 bg=entry_bg, relief="groove", borderwidth=2).grid(row=i, column=4, padx=2)
-        tk.Entry(totals_frame, textvariable=extra_uur_var[naam], font=("Arial", 10, "bold"), width=5, justify="right",
-                 bg=entry_bg, relief="groove", borderwidth=2).grid(row=i, column=5, padx=2)
-        tk.Entry(totals_frame, textvariable=extra_bedrag_var[naam], font=("Arial", 10, "bold"), width=6,
-                 justify="right",
-                 bg=entry_bg, relief="groove", borderwidth=2).grid(row=i, column=6, padx=2)
-        tk.Label(totals_frame, textvariable=afrekening_var[naam], font=("Arial", 11, "bold"), fg=fg_dark, bg=bg_light
-                 ).grid(row=i, column=7, padx=4, sticky="e")
-
-        def herbereken_afrekening(naam_in):
-            try:
-                km = extra_km_var[naam_in].get()
-                uur = extra_uur_var[naam_in].get()
-                extra = extra_bedrag_var[naam_in].get()
-                totaal = (km * KM_TARIEF) + (uur * UUR_TARIEF) + extra
-                afrekening_var[naam_in].set(round(totaal, 2))
-            except Exception:
-                afrekening_var[naam_in].set(0.0)
-
-        for var in (extra_km_var[naam], extra_uur_var[naam], extra_bedrag_var[naam], totals_var[naam],
-                    eind_totals_var[naam]):
-            var.trace_add("write", lambda *_, n=naam: (herbereken_afrekening(n), herbereken_totaal_betaald()))
-
-    # Subtotalen en totaal
-    subtotal_row_idx = len(koeriers) + 1
-    tk.Label(totals_frame, text="Totaal Bestellingen", font=("Arial", 11, "bold"), anchor="e", bg="#D2F2FF"
-             ).grid(row=subtotal_row_idx, column=0, sticky="ew", padx=5, pady=(8, 4))
-    tk.Label(totals_frame, textvariable=subtotaal_totaal_var, font=("Arial", 11, "bold"), anchor="e", bg="#D2F2FF"
-             ).grid(row=subtotal_row_idx, column=1, sticky="ew", padx=5, pady=(8, 4))
-    total_row = len(koeriers) + 2
-    tk.Label(totals_frame, text="Totaal uitbetaling aan koeriers (€):",
-             font=("Arial", 12, "bold"), fg="#225722", bg="#EAFCD5", relief="ridge"
-             ).grid(row=total_row, column=0, columnspan=6, sticky="e", padx=8, pady=(10, 4))
-    tk.Label(totals_frame, textvariable=totaal_betaald_var,
-             font=("Arial", 14, "bold"), fg="#268244", bg="#EAFCD5", relief="ridge"
-             ).grid(row=total_row, column=6, columnspan=2, sticky="e", padx=8, pady=(10, 4))
-
-    for colindex in range(8):
-        totals_frame.grid_columnconfigure(colindex, weight=1)
-
-    # ======= Logica =======
-    def herbereken_koeriers():
-        for k in koeriers:
-            totals_var[k].set(0.0)
-        totaal_bestellingen_geld = 0.0
-        for iid in tree.get_children(""):
-            vals = tree.item(iid, "values")
-            try:
-                bedrag = float(vals[5])
-                koerier_naam = vals[6]
-                totaal_bestellingen_geld += bedrag
-                if koerier_naam in totals_var:
-                    totals_var[koerier_naam].set(totals_var[koerier_naam].get() + bedrag)
-            except (ValueError, IndexError):
+            orders = self.service.get_orders_for_date(order_date)
+        except DatabaseError as e:
+            logger.exception("Error loading orders")
+            messagebox.showerror("Fout", str(e))
+            return
+        
+        # Get filter values
+        search_text = self.filter_vars.get("search", tk.StringVar()).get()
+        filter_koerier = self.filter_vars.get("koerier", tk.StringVar(value="Alle")).get()
+        
+        # Add orders to tree
+        for idx, order in enumerate(orders):
+            if not force and not self.ui.apply_filters(order, search_text, filter_koerier):
                 continue
-        subtotaal_totaal_var.set(round(totaal_bestellingen_geld, 2))
-        for k in koeriers:
-            eind_totals_var[k].set(round(totals_var[k].get() + STARTGELD, 2))
-
-    def herbereken_totaal_betaald(*_):
-        totaal = sum(afrekening_var[naam].get() for naam in koeriers)
-        totaal_betaald_var.set(round(totaal, 2))
-
-    def apply_filters(row):
-        tekst = search_var.get().lower().strip()
-        if tekst and not any(
-                tekst in str(v).lower() for v in (row['tijd'], row['straat'], row['plaats'], row['telefoon'])):
-            return False
-        f = filter_koerier_var.get()
-        if f and f != "Alle":
-            if (row.get('koerier_naam') or "") != f:
-                return False
-        return True
-
-    def laad_bestellingen(force=False):
-        # Verwijder alle rijen uit Treeview
-        for i in tree.get_children():
-            tree.delete(i)
-
-        datum = datum_var.get() or datetime.date.today().strftime('%Y-%m-%d')
-        conn = database.get_db_connection()
-        cursor = conn.cursor()
-        query = """
-                SELECT b.id, \
-                       b.totaal, \
-                       b.tijd, \
-                       k.straat, \
-                       k.huisnummer, \
-                       k.plaats, \
-                       k.telefoon, \
-                       ko.naam AS koerier_naam
-                FROM bestellingen b
-                         JOIN klanten k ON b.klant_id = k.id
-                         LEFT JOIN koeriers ko ON b.koerier_id = ko.id
-                WHERE b.datum = ?
-                ORDER BY b.tijd \
-                """
-        cursor.execute(query, (datum,))
-        rows = cursor.fetchall()
-        conn.close()
-
-        # Zorg dat headers altijd in hoofdletters staan
-        for c in cols:
-            tree.heading(c, text=headers[c].upper())
-
-        # Voeg rijen toe (let op: inspringing moet correct!)
-        for idx, bestelling in enumerate(rows):
-            if not apply_filters(bestelling) and not force:
-                continue
-            gemeente = bestelling['plaats']
-            koerier_naam = bestelling['koerier_naam'] or ""
+            
+            koerier_naam = order.get('koerier_naam') or ""
             base_tag = "row_a" if idx % 2 == 0 else "row_b"
-
+            
             if koerier_naam:
-                kg = f"koerier_{koerier_naam.replace(' ', '_')}"
-                if not style.lookup(kg, "background"):
-                    tree.tag_configure(kg, background=KOERIER_ROW_COLORS.get(koerier_naam, "#FFFFFF"),
-                                       foreground="#000000")
-                tags = (kg,)
+                tag = f"koerier_{koerier_naam.replace(' ', '_')}"
+                tags = (tag,)
             else:
                 tags = (base_tag, "unassigned")
+            
             koerier_cell = koerier_naam if koerier_naam else "(geen)"
-
-            tree.insert(
-                "", tk.END, iid=bestelling['id'],
+            
+            self.tree.insert(
+                "",
+                tk.END,
+                iid=order['id'],
                 values=(
-                    bestelling['tijd'],
-                    bestelling['straat'],
-                    bestelling['huisnummer'],
-                    gemeente,
-                    bestelling['telefoon'],
-                    f"{bestelling['totaal']:.2f}",
+                    order['tijd'],
+                    order['straat'],
+                    order['huisnummer'],
+                    order['plaats'],
+                    order['telefoon'],
+                    f"{order['totaal']:.2f}",
                     koerier_cell
                 ),
                 tags=tags
             )
-
-        # Hover/selection highlight (optioneel)
-        style.configure("Treeview", rowheight=24)
-        style.map("Treeview", background=[('selected', '#B3E5FC')], foreground=[('selected', '#0D47A1')])
-
-        # Zorg dat subtotaal/afrekeningen altijd worden herberekend na laden!
-        herbereken_koeriers()
-        herbereken_totaal_betaald()
-
-    def verwijder_toewijzing():
-        sel = tree.selection()
-        if not sel:
+        
+        # Recalculate totals
+        self.recalculate_courier_totals()
+        self.recalculate_total_payment()
+    
+    def recalculate_courier_totals(self) -> None:
+        """Recalculate totals for each courier."""
+        # Reset totals
+        for naam in self.courier_names:
+            self.totals_var[naam].set(0.0)
+        
+        total_orders = 0.0
+        
+        # Calculate from tree
+        for item_id in self.tree.get_children():
+            values = self.tree.item(item_id, "values")
+            try:
+                bedrag = float(values[5])
+                koerier_naam = values[6]
+                total_orders += bedrag
+                
+                if koerier_naam and koerier_naam != "(geen)" and koerier_naam in self.totals_var:
+                    self.totals_var[koerier_naam].set(
+                        self.totals_var[koerier_naam].get() + bedrag
+                    )
+            except (ValueError, IndexError):
+                continue
+        
+        self.subtotaal_totaal_var.set(round(total_orders, 2))
+        
+        # Calculate final totals
+        for naam in self.courier_names:
+            subtotal = self.totals_var[naam].get()
+            self.eind_totals_var[naam].set(
+                self.service.calculate_final_total(subtotal)
+            )
+    
+    def recalculate_payment(self, naam: str) -> None:
+        """Recalculate payment for a specific courier."""
+        try:
+            subtotal = self.totals_var[naam].get()
+            km = self.extra_km_var[naam].get()
+            uur = self.extra_uur_var[naam].get()
+            extra = self.extra_bedrag_var[naam].get()
+            
+            payment = self.service.calculate_payment(subtotal, km, uur, extra)
+            self.afrekening_var[naam].set(payment)
+        except Exception:
+            self.afrekening_var[naam].set(0.0)
+    
+    def recalculate_total_payment(self) -> None:
+        """Recalculate total payment to all couriers."""
+        total = sum(self.afrekening_var[naam].get() for naam in self.courier_names)
+        self.totaal_betaald_var.set(round(total, 2))
+    
+    def add_courier(self) -> None:
+        """Add a new courier."""
+        naam = self.new_koerier_entry.get().strip()
+        if not naam:
+            messagebox.showwarning("Invoerfout", "Voer een naam in voor de nieuwe koerier.")
             return
-        conn = database.get_db_connection()
-        cursor = conn.cursor()
-        for iid in sel:
-            cursor.execute("UPDATE bestellingen SET koerier_id = NULL WHERE id = ?", (iid,))
-        conn.commit()
-        conn.close()
-        laad_bestellingen(True)
-
-    def wijs_koerier_toe(naam):
-        sel = tree.selection()
-        if not sel:
+        
+        try:
+            self.service.add_courier(naam)
+            messagebox.showinfo("Succes", f"Koerier '{naam}' is succesvol toegevoegd.")
+            self.new_koerier_entry.delete(0, tk.END)
+            self.load_couriers()
+            self.setup_ui()  # Rebuild UI with new courier
+        except DatabaseError as e:
+            messagebox.showerror("Fout", str(e))
+    
+    def delete_courier(self, naam: str) -> None:
+        """Delete a courier."""
+        if not naam:
+            messagebox.showwarning("Selectie", "Kies eerst een koerier om te verwijderen.")
+            return
+        
+        if not messagebox.askyesno("Bevestigen", f"Weet u zeker dat u '{naam}' wilt verwijderen?"):
+            return
+        
+        koerier_id = self.courier_data.get(naam)
+        if koerier_id is None:
+            messagebox.showerror("Fout", "Koerier niet gevonden in de data.")
+            return
+        
+        try:
+            self.service.delete_courier(koerier_id, naam)
+            messagebox.showinfo("Succes", f"Koerier '{naam}' is verwijderd.")
+            self.load_couriers()
+            self.setup_ui()  # Rebuild UI without deleted courier
+        except DatabaseError as e:
+            messagebox.showerror("Fout", str(e))
+    
+    def assign_courier(self, naam: str) -> None:
+        """Assign selected orders to a courier."""
+        selected = self.tree.selection()
+        if not selected:
             messagebox.showinfo("Selectie", "Selecteer eerst één of meer rijen.")
             return
-        koerier_id = koeriers_data.get(naam)
+        
+        koerier_id = self.courier_data.get(naam)
         if koerier_id is None:
             return
-        conn = database.get_db_connection()
-        cursor = conn.cursor()
-        for iid in sel:
-            cursor.execute("UPDATE bestellingen SET koerier_id = ? WHERE id = ?", (koerier_id, iid))
-        conn.commit()
-        conn.close()
-        laad_bestellingen(True)
-
-    def open_toewijs_popup():
-        if not tree.selection():
-            messagebox.showinfo("Selectie", "Selecteer eerst één of meer rijen.")
+        
+        try:
+            order_ids = [int(item_id) for item_id in selected]
+            self.service.assign_courier_to_orders(order_ids, koerier_id)
+            self.load_orders(force=True)
+        except (ValueError, DatabaseError) as e:
+            logger.exception("Error assigning courier")
+            messagebox.showerror("Fout", f"Kon koerier niet toewijzen: {e}")
+    
+    def remove_assignment(self) -> None:
+        """Remove courier assignment from selected orders."""
+        selected = self.tree.selection()
+        if not selected:
             return
-        top = tk.Toplevel(win)
-        top.title("Wijs koerier toe")
-        tk.Label(top, text="Kies koerier:", font=("Arial", 10, "bold")).pack(padx=10, pady=(10, 4))
-        combo_var = tk.StringVar(value=koeriers[0] if koeriers else "")
-        ttk.Combobox(top, values=koeriers, textvariable=combo_var, state="readonly", width=24).pack(padx=10, pady=4)
+        
+        try:
+            order_ids = [int(item_id) for item_id in selected]
+            self.service.remove_courier_from_orders(order_ids)
+            self.load_orders(force=True)
+        except (ValueError, DatabaseError) as e:
+            logger.exception("Error removing assignment")
+            messagebox.showerror("Fout", f"Kon toewijzing niet verwijderen: {e}")
 
-        def ok():
-            if combo_var.get():
-                wijs_koerier_toe(combo_var.get())
-            top.destroy()
 
-        tk.Button(top, text="OK", command=ok, bg="#D1FFD1").pack(padx=10, pady=(8, 10))
-
-    # Live filters
-    search_var.trace_add("write", lambda *_: laad_bestellingen())
-    filter_koerier_var.trace_add("write", lambda *_: laad_bestellingen())
-    datum_var.trace_add("write", lambda *_: laad_bestellingen())
-
-    laad_bestellingen(True)
+def open_koeriers(root: tk.Tk) -> None:
+    """
+    Open courier management interface.
+    
+    Args:
+        root: Root widget (tab frame)
+    """
+    manager = CourierManager(root)
+    manager.load_couriers()
+    manager.setup_ui()

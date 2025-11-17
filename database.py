@@ -3,25 +3,70 @@ import csv
 import os
 import json
 import datetime
+from typing import Optional, Dict, Any, List
+from logging_config import setup_logging, get_logger
+from exceptions import DatabaseError
+
+# Setup logging
+setup_logging()
+logger = get_logger("pizzeria.database")
 
 
 DB_FILE = "pizzeria.db"
+# Timeout for database operations (in seconds)
+DB_TIMEOUT = 20.0
 
 
-def get_db_connection():
-    """Maakt een databaseconnectie aan en retourneert deze."""
-    conn = sqlite3.connect(DB_FILE)
-    conn.row_factory = sqlite3.Row
-    return conn
+def get_db_connection() -> sqlite3.Connection:
+    """
+    Maakt een databaseconnectie aan en retourneert deze.
+    
+    Uses timeout to prevent database locking issues.
+    
+    Returns:
+        SQLite database connection
+        
+    Raises:
+        DatabaseError: If connection cannot be established
+    """
+    try:
+        conn = sqlite3.connect(DB_FILE, timeout=DB_TIMEOUT)
+        conn.row_factory = sqlite3.Row
+        # Enable WAL mode for better concurrency
+        conn.execute("PRAGMA journal_mode=WAL")
+        return conn
+    except sqlite3.Error as e:
+        logger.exception(f"Database connection error: {e}")
+        raise DatabaseError(f"Kon geen databaseverbinding maken: {e}") from e
+
+
+class DatabaseContext:
+    """Context manager for database connections."""
+    
+    def __init__(self):
+        self.conn = None
+    
+    def __enter__(self):
+        self.conn = get_db_connection()
+        return self.conn
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.conn:
+            if exc_type:
+                self.conn.rollback()
+            else:
+                self.conn.commit()
+            self.conn.close()
+        return False  # Don't suppress exceptions
 
 
 def create_tables():
     """Maakt de databasetabellen aan als ze nog niet bestaan en voegt ontbrekende kolommen toe."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    with DatabaseContext() as conn:
+        cursor = conn.cursor()
 
-    # Klanten tabel (uitgebreid voor CRM)
-    cursor.execute('''
+        # Klanten tabel (uitgebreid voor CRM)
+        cursor.execute('''
                    CREATE TABLE IF NOT EXISTS klanten
                    (
                        id
@@ -55,26 +100,32 @@ def create_tables():
                        totaal_besteed
                        REAL
                        DEFAULT
-                       0.0
+                       0.0,
+                       volle_kaart
+                       INTEGER
+                       DEFAULT
+                       0
                    )
                    ''')
 
-    # Zorg dat nieuwe kolommen bestaan in bestaande DB's
-    cursor.execute("PRAGMA table_info(klanten)")
-    kcols = [row[1] for row in cursor.fetchall()]
-    if 'notities' not in kcols:
-        cursor.execute("ALTER TABLE klanten ADD COLUMN notities TEXT")
-    if 'voorkeur_levering' not in kcols:
-        cursor.execute("ALTER TABLE klanten ADD COLUMN voorkeur_levering TEXT")
-    if 'laatste_bestelling' not in kcols:
-        cursor.execute("ALTER TABLE klanten ADD COLUMN laatste_bestelling TEXT")
-    if 'totaal_bestellingen' not in kcols:
-        cursor.execute("ALTER TABLE klanten ADD COLUMN totaal_bestellingen INTEGER DEFAULT 0")
-    if 'totaal_besteed' not in kcols:
-        cursor.execute("ALTER TABLE klanten ADD COLUMN totaal_besteed REAL DEFAULT 0.0")
+        # Zorg dat nieuwe kolommen bestaan in bestaande DB's
+        cursor.execute("PRAGMA table_info(klanten)")
+        kcols = [row[1] for row in cursor.fetchall()]
+        if 'notities' not in kcols:
+            cursor.execute("ALTER TABLE klanten ADD COLUMN notities TEXT")
+        if 'voorkeur_levering' not in kcols:
+            cursor.execute("ALTER TABLE klanten ADD COLUMN voorkeur_levering TEXT")
+        if 'laatste_bestelling' not in kcols:
+            cursor.execute("ALTER TABLE klanten ADD COLUMN laatste_bestelling TEXT")
+        if 'totaal_bestellingen' not in kcols:
+            cursor.execute("ALTER TABLE klanten ADD COLUMN totaal_bestellingen INTEGER DEFAULT 0")
+        if 'totaal_besteed' not in kcols:
+            cursor.execute("ALTER TABLE klanten ADD COLUMN totaal_besteed REAL DEFAULT 0.0")
+        if 'volle_kaart' not in kcols:
+            cursor.execute("ALTER TABLE klanten ADD COLUMN volle_kaart INTEGER DEFAULT 0")
 
-    # Koeriers tabel
-    cursor.execute('''
+        # Koeriers tabel
+        cursor.execute('''
                    CREATE TABLE IF NOT EXISTS koeriers
                    (
                        id
@@ -90,8 +141,8 @@ def create_tables():
                    )
                    ''')
 
-    # Bestellingen tabel
-    cursor.execute('''
+        # Bestellingen tabel
+        cursor.execute('''
                    CREATE TABLE IF NOT EXISTS bestellingen
                    (
                        id
@@ -136,16 +187,18 @@ def create_tables():
                    )
                        )
                    ''')
-    # Backwards compat kolommen
-    cursor.execute("PRAGMA table_info(bestellingen)")
-    bcols = [row[1] for row in cursor.fetchall()]
-    if 'koerier_id' not in bcols:
-        cursor.execute("ALTER TABLE bestellingen ADD COLUMN koerier_id INTEGER REFERENCES koeriers(id)")
-    if 'bonnummer' not in bcols:
-        cursor.execute("ALTER TABLE bestellingen ADD COLUMN bonnummer TEXT")
+        # Backwards compat kolommen
+        cursor.execute("PRAGMA table_info(bestellingen)")
+        bcols = [row[1] for row in cursor.fetchall()]
+        if 'koerier_id' not in bcols:
+            cursor.execute("ALTER TABLE bestellingen ADD COLUMN koerier_id INTEGER REFERENCES koeriers(id)")
+        if 'bonnummer' not in bcols:
+            cursor.execute("ALTER TABLE bestellingen ADD COLUMN bonnummer TEXT")
+        if 'levertijd' not in bcols:
+            cursor.execute("ALTER TABLE bestellingen ADD COLUMN levertijd TEXT")
 
-    # Bestelregels tabel
-    cursor.execute('''
+        # Bestelregels tabel
+        cursor.execute('''
                    CREATE TABLE IF NOT EXISTS bestelregels
                    (
                        id
@@ -178,16 +231,16 @@ def create_tables():
                        )
                    ''')
 
-    # Controleer het schema van bon_teller en herstel het indien nodig.
-    # Dit is nodig voor oudere databases waar de 'dag' kolom nog niet bestond.
-    cursor.execute("PRAGMA table_info(bon_teller)")
-    bon_teller_cols = [row[1] for row in cursor.fetchall()]
-    if bon_teller_cols and 'dag' not in bon_teller_cols:
-        print("Verouderde 'bon_teller' tabel gedetecteerd. Tabel wordt opnieuw aangemaakt om het schema te corrigeren.")
-        cursor.execute("DROP TABLE IF EXISTS bon_teller")
+        # Controleer het schema van bon_teller en herstel het indien nodig.
+        # Dit is nodig voor oudere databases waar de 'dag' kolom nog niet bestond.
+        cursor.execute("PRAGMA table_info(bon_teller)")
+        bon_teller_cols = [row[1] for row in cursor.fetchall()]
+        if bon_teller_cols and 'dag' not in bon_teller_cols:
+            logger.warning("Verouderde 'bon_teller' tabel gedetecteerd. Tabel wordt opnieuw aangemaakt om het schema te corrigeren.")
+            cursor.execute("DROP TABLE IF EXISTS bon_teller")
 
-    # Bon-teller tabel
-    cursor.execute('''
+        # Bon-teller tabel
+        cursor.execute('''
                    CREATE TABLE IF NOT EXISTS bon_teller
                    (
                        jaar
@@ -211,8 +264,8 @@ def create_tables():
                        )
                    ''')
 
-    # Favoriete bestellingen (per klant)
-    cursor.execute('''
+        # Favoriete bestellingen (per klant)
+        cursor.execute('''
                    CREATE TABLE IF NOT EXISTS favoriete_bestellingen
                    (
                        id
@@ -255,8 +308,8 @@ def create_tables():
                        )
                    ''')
 
-    # Klant notities (geschiedenis)
-    cursor.execute('''
+        # Klant notities (geschiedenis)
+        cursor.execute('''
                    CREATE TABLE IF NOT EXISTS klant_notities
                    (
                        id
@@ -289,8 +342,8 @@ def create_tables():
                        )
                    ''')
 
-    # Voorraad tabellen
-    cursor.execute('''
+        # Voorraad tabellen
+        cursor.execute('''
                    CREATE TABLE IF NOT EXISTS ingredienten
                    (
                        id
@@ -317,7 +370,7 @@ def create_tables():
                        0
                    )
                    ''')
-    cursor.execute('''
+        cursor.execute('''
                    CREATE TABLE IF NOT EXISTS recepturen
                    (
                        id
@@ -356,7 +409,7 @@ def create_tables():
                    )
                        )
                    ''')
-    cursor.execute('''
+        cursor.execute('''
                    CREATE TABLE IF NOT EXISTS voorraad_mutaties
                    (
                        id
@@ -389,138 +442,246 @@ def create_tables():
                        )
                    ''')
 
-    conn.commit()
-    conn.close()
-    print("Tabellen zijn aangemaakt/bijgewerkt (indien nodig).")
+        # Commit happens automatically in DatabaseContext.__exit__
+        logger.info("Tabellen zijn aangemaakt/bijgewerkt (indien nodig).")
+        
+        # Create indexes for query optimization
+        add_database_indexes(cursor)
+
+
+def add_database_indexes(cursor: sqlite3.Cursor) -> None:
+    """
+    Create database indexes for frequently queried columns.
+    
+    This function creates indexes to optimize query performance for:
+    - Customer lookups by phone
+    - Order queries by customer, date, and courier
+    - Order item lookups
+    - Recipe lookups by category and product
+    - Inventory mutation queries
+    
+    Args:
+        cursor: Database cursor to execute index creation statements
+    """
+    indexes = [
+        # Bestellingen indexes
+        ("idx_bestellingen_klant_id", "bestellingen", "klant_id"),
+        ("idx_bestellingen_datum", "bestellingen", "datum"),
+        ("idx_bestellingen_koerier_id", "bestellingen", "koerier_id"),
+        ("idx_bestellingen_datum_tijd", "bestellingen", "datum, tijd"),
+        
+        # Bestelregels indexes
+        ("idx_bestelregels_bestelling_id", "bestelregels", "bestelling_id"),
+        
+        # Recepturen indexes (composite for category+product lookups)
+        ("idx_recepturen_categorie_product", "recepturen", "categorie, product"),
+        
+        # Voorraad indexes
+        ("idx_voorraad_mutaties_ingredient_id", "voorraad_mutaties", "ingredient_id"),
+        ("idx_voorraad_mutaties_datumtijd", "voorraad_mutaties", "datumtijd"),
+        
+        # Favoriete bestellingen indexes
+        ("idx_favoriete_bestellingen_klant_id", "favoriete_bestellingen", "klant_id"),
+        
+        # Klant notities indexes
+        ("idx_klant_notities_klant_id", "klant_notities", "klant_id"),
+    ]
+    
+    for index_name, table_name, columns in indexes:
+        try:
+            cursor.execute(
+                f"CREATE INDEX IF NOT EXISTS {index_name} ON {table_name}({columns})"
+            )
+            logger.debug(f"Index created/verified: {index_name}")
+        except sqlite3.Error as e:
+            logger.warning(f"Failed to create index {index_name}: {e}")
+    
+    logger.info(f"Database indexes created/verified ({len(indexes)} indexes)")
 
 
 def migrate_klanten_from_csv():
-    """Migreert klantgegevens van klanten.csv naar de SQLite database, indien nodig."""
+    """Migreert klantgegevens van klanten.csv naar de SQLite database."""
     if not os.path.exists("klanten.csv"):
-        print("klanten.csv niet gevonden. Migratie overgeslagen.")
+        logger.info("klanten.csv niet gevonden. Migratie overgeslagen.")
         return
 
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    with DatabaseContext() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM klanten")
+        existing_count = cursor.fetchone()[0]
+        if existing_count > 0:
+            logger.info(f"Klantendatabase bevat al {existing_count} klanten. Migratie uit CSV wordt toch uitgevoerd (duplicaten worden overgeslagen).")
 
-    cursor.execute("SELECT COUNT(*) FROM klanten")
-    if cursor.fetchone()[0] > 0:
-        conn.close()
-        print("Klantendatabase is niet leeg. Migratie overgeslagen.")
-        return
-
-    print("Start migratie van klanten uit klanten.csv...")
+    logger.info("Start migratie van klanten uit klanten.csv...")
     try:
-        with open("klanten.csv", 'r', encoding='latin-1', newline='') as f:
-            reader = csv.DictReader(f, delimiter=';')
-            klanten_to_insert = []
-            for row in reader:
-                telefoon = row.get('Telefoonnummer', '').strip()
-                if telefoon:
-                    klanten_to_insert.append((
-                        telefoon,
-                        row.get('Straat', '').strip(),
-                        row.get('Huisnummer', '').strip(),
-                        row.get('Plaats', '').strip(),
-                        row.get('Naam', '').strip()
-                    ))
-            cursor.executemany(
-                "INSERT OR IGNORE INTO klanten (telefoon, straat, huisnummer, plaats, naam) VALUES (?, ?, ?, ?, ?)",
-                klanten_to_insert
-            )
-            conn.commit()
-            print(f"{cursor.rowcount} unieke klanten gemigreerd.")
+        with DatabaseContext() as conn:
+            cursor = conn.cursor()
+            with open("klanten.csv", 'r', encoding='latin-1', newline='') as f:
+                reader = csv.DictReader(f, delimiter=';')
+                klanten_to_insert = []
+                for row in reader:
+                    telefoon = row.get('Telefoonnummer', '').strip()
+                    if telefoon:
+                        klanten_to_insert.append((
+                            telefoon,
+                            row.get('Straat', '').strip(),
+                            row.get('Huisnummer', '').strip(),
+                            row.get('Plaats', '').strip(),
+                            row.get('Naam', '').strip()
+                        ))
+                if klanten_to_insert:
+                    cursor.executemany(
+                        "INSERT OR IGNORE INTO klanten (telefoon, straat, huisnummer, plaats, naam) VALUES (?, ?, ?, ?, ?)",
+                        klanten_to_insert
+                    )
+                    logger.info(f"{cursor.rowcount} unieke klanten gemigreerd uit klanten.csv.")
+                else:
+                    logger.warning("Geen klanten gevonden in klanten.csv om te migreren.")
     except Exception as e:
-        print(f"Fout tijdens migratie van klanten: {e}")
-    finally:
-        conn.close()
+        logger.exception(f"Fout tijdens migratie van klanten uit CSV: {e}")
+
+
+def migrate_klanten_from_json():
+    """Migreert klantgegevens van klanten.json naar de SQLite database, indien nodig."""
+    if not os.path.exists("klanten.json"):
+        logger.info("klanten.json niet gevonden. Migratie overgeslagen.")
+        return
+
+    with DatabaseContext() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM klanten")
+        existing_count = cursor.fetchone()[0]
+        if existing_count > 0:
+            logger.info(f"Klantendatabase bevat al {existing_count} klanten. Migratie uit JSON wordt toch uitgevoerd (duplicaten worden overgeslagen).")
+
+    logger.info("Start migratie van klanten uit klanten.json...")
+    try:
+        import json
+        with DatabaseContext() as conn:
+            cursor = conn.cursor()
+            with open("klanten.json", 'r', encoding='utf-8') as f:
+                klanten_data = json.load(f)
+            
+            klanten_to_insert = []
+            
+            # Handle different JSON structures
+            if isinstance(klanten_data, list):
+                # If it's a list of customer objects
+                for klant in klanten_data:
+                    if isinstance(klant, dict):
+                        telefoon = klant.get('telefoon') or klant.get('Telefoonnummer') or klant.get('phone', '').strip()
+                        if telefoon:
+                            klanten_to_insert.append((
+                                str(telefoon).strip(),
+                                (klant.get('straat') or klant.get('Straat') or klant.get('adres') or klant.get('Adres') or '').strip(),
+                                (klant.get('huisnummer') or klant.get('Huisnummer') or klant.get('nr') or klant.get('Nr') or '').strip(),
+                                (klant.get('plaats') or klant.get('Plaats') or klant.get('postcode_gemeente') or klant.get('gemeente') or '').strip(),
+                                (klant.get('naam') or klant.get('Naam') or klant.get('name') or '').strip()
+                            ))
+            elif isinstance(klanten_data, dict):
+                # If it's a dictionary with customer objects
+                for key, klant in klanten_data.items():
+                    if isinstance(klant, dict):
+                        telefoon = klant.get('telefoon') or klant.get('Telefoonnummer') or klant.get('phone') or key
+                        if telefoon:
+                            klanten_to_insert.append((
+                                str(telefoon).strip(),
+                                (klant.get('straat') or klant.get('Straat') or klant.get('adres') or klant.get('Adres') or '').strip(),
+                                (klant.get('huisnummer') or klant.get('Huisnummer') or klant.get('nr') or klant.get('Nr') or '').strip(),
+                                (klant.get('plaats') or klant.get('Plaats') or klant.get('postcode_gemeente') or klant.get('gemeente') or '').strip(),
+                                (klant.get('naam') or klant.get('Naam') or klant.get('name') or '').strip()
+                            ))
+            
+            if klanten_to_insert:
+                cursor.executemany(
+                    "INSERT OR IGNORE INTO klanten (telefoon, straat, huisnummer, plaats, naam) VALUES (?, ?, ?, ?, ?)",
+                    klanten_to_insert
+                )
+                logger.info(f"{cursor.rowcount} unieke klanten gemigreerd uit klanten.json.")
+            else:
+                logger.warning("Geen klanten gevonden in klanten.json om te migreren.")
+    except Exception as e:
+        logger.exception(f"Fout tijdens migratie van klanten uit JSON: {e}")
 
 
 def migrate_bestellingen_from_csv():
     """Migreert de bestelgeschiedenis van bestellingen.csv naar de database."""
     if not os.path.exists("bestellingen.csv"):
-        print("bestellingen.csv niet gevonden. Migratie overgeslagen.")
+        logger.info("bestellingen.csv niet gevonden. Migratie overgeslagen.")
         return
 
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    with DatabaseContext() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM bestellingen")
+        if cursor.fetchone()[0] > 0:
+            logger.info("Database 'bestellingen' is niet leeg. Migratie overgeslagen.")
+            return
 
-    cursor.execute("SELECT COUNT(*) FROM bestellingen")
-    if cursor.fetchone()[0] > 0:
-        conn.close()
-        print("Database 'bestellingen' is niet leeg. Migratie overgeslagen.")
-        return
-
-    print("Start migratie van bestellingen uit bestellingen.csv...")
+    logger.info("Start migratie van bestellingen uit bestellingen.csv...")
     try:
-        with open("bestellingen.csv", 'r', encoding='utf-8', newline='') as f:
-            reader = csv.reader(f, delimiter=';')
-            for row in reader:
-                if len(row) < 8:
-                    continue  # Onvolledige rij
+        with DatabaseContext() as conn:
+            cursor = conn.cursor()
+            with open("bestellingen.csv", 'r', encoding='utf-8', newline='') as f:
+                reader = csv.reader(f, delimiter=';')
+                for row in reader:
+                    if len(row) < 8:
+                        continue  # Onvolledige rij
 
-                order_datum, order_tijd, tel, straat, nr, plaats, totaal_str, bestelregels_json, *rest = row
-                opmerking = rest[0] if rest else ""
+                    order_datum, order_tijd, tel, straat, nr, plaats, totaal_str, bestelregels_json, *rest = row
+                    opmerking = rest[0] if rest else ""
 
-                cursor.execute("SELECT id FROM klanten WHERE telefoon = ?", (tel.strip(),))
-                klant_row = cursor.fetchone()
-                klant_id = klant_row[0] if klant_row else None
+                    cursor.execute("SELECT id FROM klanten WHERE telefoon = ?", (tel.strip(),))
+                    klant_row = cursor.fetchone()
+                    klant_id = klant_row[0] if klant_row else None
 
-                if not klant_id:
-                    continue  # Klant bestaat niet in database
+                    if not klant_id:
+                        continue  # Klant bestaat niet in database
 
-                cursor.execute(
-                    "INSERT INTO bestellingen (klant_id, datum, tijd, totaal, opmerking) VALUES (?, ?, ?, ?, ?)",
-                    (klant_id, order_datum, order_tijd, float(totaal_str), opmerking)
-                )
-                bestelling_id = cursor.lastrowid
-
-                try:
-                    bestelregels_data = json.loads(bestelregels_json)
-                except Exception:
-                    bestelregels_data = []
-
-                for regel in bestelregels_data:
                     cursor.execute(
-                        "INSERT INTO bestelregels (bestelling_id, categorie, product, aantal, prijs, extras) VALUES (?, ?, ?, ?, ?, ?)",
-                        (
-                            bestelling_id,
-                            regel.get('categorie', ''),
-                            regel.get('product', ''),
-                            int(regel.get('aantal', 1)),
-                            float(regel.get('prijs', 0)),
-                            json.dumps(regel.get('extras', {}))
-                        )
+                        "INSERT INTO bestellingen (klant_id, datum, tijd, totaal, opmerking) VALUES (?, ?, ?, ?, ?)",
+                        (klant_id, order_datum, order_tijd, float(totaal_str), opmerking)
                     )
-        conn.commit()
-        print("Migratie van bestellingen voltooid.")
-        os.rename("bestellingen.csv", "bestellingen.csv.migrated")
-        print("bestellingen.csv is hernoemd naar bestellingen.csv.migrated.")
+                    bestelling_id = cursor.lastrowid
+
+                    try:
+                        bestelregels_data = json.loads(bestelregels_json)
+                    except Exception:
+                        bestelregels_data = []
+
+                    for regel in bestelregels_data:
+                        cursor.execute(
+                            "INSERT INTO bestelregels (bestelling_id, categorie, product, aantal, prijs, extras) VALUES (?, ?, ?, ?, ?, ?)",
+                            (
+                                bestelling_id,
+                                regel.get('categorie', ''),
+                                regel.get('product', ''),
+                                int(regel.get('aantal', 1)),
+                                float(regel.get('prijs', 0)),
+                                json.dumps(regel.get('extras', {}))
+                            )
+                        )
+            logger.info("Migratie van bestellingen voltooid.")
+            os.rename("bestellingen.csv", "bestellingen.csv.migrated")
+            logger.info("bestellingen.csv is hernoemd naar bestellingen.csv.migrated.")
     except Exception as e:
-        print(f"Fout tijdens migratie van bestellingen: {e}")
-        conn.rollback()
-    finally:
-        conn.close()
+        logger.exception(f"Fout tijdens migratie van bestellingen: {e}")
 
 
 def populate_koeriers_if_empty():
     """Voegt standaardkoeriers toe aan de database als de tabel leeg is."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM koeriers")
-    if cursor.fetchone()[0] == 0:
-        print("Koeriers-tabel is leeg, standaardkoeriers worden toegevoegd.")
-        koeriers = [("Koerier 1",), ("Koerier 2",), ("Koerier 3",)]
-        cursor.executemany("INSERT INTO koeriers (naam) VALUES (?)", koeriers)
-        conn.commit()
-    conn.close()
+    with DatabaseContext() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM koeriers")
+        if cursor.fetchone()[0] == 0:
+            logger.info("Koeriers-tabel is leeg, standaardkoeriers worden toegevoegd.")
+            koeriers = [("Koerier 1",), ("Koerier 2",), ("Koerier 3",)]
+            cursor.executemany("INSERT INTO koeriers (naam) VALUES (?)", koeriers)
 
 
-def update_klant_statistieken(klant_id):
+def update_klant_statistieken(klant_id: int) -> None:
     """Werk klantstatistieken (totaal bestellingen, besteed, laatste) bij."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    try:
+    with DatabaseContext() as conn:
+        cursor = conn.cursor()
         cursor.execute("""
                        SELECT COUNT(*)                  AS aantal_bestellingen,
                               COALESCE(SUM(totaal), 0)  AS totaal_besteed,
@@ -537,16 +698,12 @@ def update_klant_statistieken(klant_id):
                        WHERE id = ?
                        """,
                        (stats['aantal_bestellingen'], stats['totaal_besteed'], stats['laatste_bestelling'], klant_id))
-        conn.commit()
-    finally:
-        conn.close()
 
 
-def boek_voorraad_verbruik(bestelling_id: int):
+def boek_voorraad_verbruik(bestelling_id: int) -> None:
     """Boekt voorraadverbruik voor alle bestelregels via recepturen."""
-    conn = get_db_connection()
-    cur = conn.cursor()
-    try:
+    with DatabaseContext() as conn:
+        cur = conn.cursor()
         # Haal regels op
         cur.execute("""
                     SELECT categorie, product, aantal
@@ -592,25 +749,21 @@ def boek_voorraad_verbruik(bestelling_id: int):
                         SET huidige_voorraad = COALESCE(huidige_voorraad, 0) - ?
                         WHERE id = ?
                         """, (qty, ingr_id))
-        conn.commit()
-    finally:
-        conn.close()
 
 
-def get_next_bonnummer(peek_only=False):
-    import datetime
+def get_next_bonnummer(peek_only: bool = False) -> str:
+    """Get next receipt number, optionally just peeking without incrementing."""
+    # Note: datetime is already imported at module level
     now = datetime.datetime.now()
     jaar = now.year
     dag_in_jaar = now.timetuple().tm_yday  # dagnummer in jaar (1-366)
 
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    try:
+    with DatabaseContext() as conn:
+        cursor = conn.cursor()
         cursor.execute(
             "INSERT OR IGNORE INTO bon_teller (jaar, dag, laatste_nummer) VALUES (?, ?, 0)",
             (jaar, dag_in_jaar)
         )
-        conn.commit()
         cursor.execute(
             "SELECT laatste_nummer FROM bon_teller WHERE jaar = ? AND dag = ?",
             (jaar, dag_in_jaar)
@@ -624,19 +777,21 @@ def get_next_bonnummer(peek_only=False):
                 "UPDATE bon_teller SET laatste_nummer = ? WHERE jaar = ? AND dag = ?",
                 (next_number, jaar, dag_in_jaar)
             )
-            conn.commit()
 
         # Bonnummer structuur: YYYYNNNN (dag telt alleen voor reset, niet zichtbaar in bonnummer)
         return f"{jaar}{next_number:04d}"
-    finally:
-        conn.close()
 
 
 def initialize_database():
     """Initialiseert de database: maakt tabellen aan en migreert data."""
     create_tables()
+    # Ensure indexes exist (in case tables were created before index function was added)
+    with DatabaseContext() as conn:
+        cursor = conn.cursor()
+        add_database_indexes(cursor)
     populate_koeriers_if_empty()
     migrate_klanten_from_csv()
+    migrate_klanten_from_json()  # Also migrate from JSON if it exists
     migrate_bestellingen_from_csv()
 
 # Aanroepen indien gewenst:

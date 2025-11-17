@@ -1,9 +1,10 @@
 import datetime
 from decimal import Decimal, ROUND_HALF_UP
 import json
+from typing import Dict, List, Any, Optional
 
 
-def get_pizza_num(naam):
+def get_pizza_num(naam: str) -> str:
     """
     Haal cijfer voor de eerste punt uit de pizzanaam, bijvoorbeeld:
     "12. Margherita" -> "12"
@@ -16,13 +17,29 @@ def get_pizza_num(naam):
 
 
 
-def generate_bon_text(klant, bestelregels, bonnummer, menu_data_for_drinks=None, extras_data=None):
+def generate_bon_text(
+    klant: Dict[str, Any],
+    bestelregels: List[Dict[str, Any]],
+    bonnummer: str,
+    menu_data_for_drinks: Optional[Dict[str, Any]] = None,
+    extras_data: Optional[Dict[str, Any]] = None
+) -> str:
     """
     Genereert bontekst exact zoals de gewenste layout.
     """
     BON_WIDTH = 46
 
-    totaal = sum(Decimal(str(item['prijs'])) * item['aantal'] for item in bestelregels)
+    # Calculate subtotal
+    subtotaal = sum(Decimal(str(item['prijs'])) * item['aantal'] for item in bestelregels)
+    
+    # Apply discount if afhaal
+    korting_percentage = Decimal(str(klant.get('korting_percentage', 0.0)))
+    korting_bedrag = Decimal('0.00')
+    totaal = subtotaal
+    
+    if korting_percentage > 0 and subtotaal > 0:
+        korting_bedrag = round(subtotaal * (korting_percentage / Decimal('100')), 2)
+        totaal = subtotaal - korting_bedrag
 
     # ============ 1. HEADER ============
     header_lines = [
@@ -44,23 +61,39 @@ def generate_bon_text(klant, bestelregels, bonnummer, menu_data_for_drinks=None,
     # ============ 2. BESTELINFO ============
     nu = datetime.datetime.now()
     bezorgtijd = (nu + datetime.timedelta(minutes=45)).strftime('%H:%M')
+    
+    # Check if this is a pickup order (afhaal)
+    is_afhaal = klant.get('afhaal', False)
+    
+    # Use levertijd from klant data if provided, otherwise use calculated bezorgtijd
+    levertijd = klant.get('levertijd')
+    if not levertijd or levertijd.strip() == "":
+        levertijd = bezorgtijd
 
-    def format_line(label, value_str):
+    def format_line(label: str, value_str: str) -> str:
         label_part = f"{label}:"
         value_part = str(value_str)
         filler_space = BON_WIDTH - len(label_part) - len(value_part)
         return f"{label_part}{' ' * filler_space}{value_part}"
 
+    # Determine order type
+    soort_bestelling = "Afhaal" if is_afhaal else "Tel"
+    
     info_lines = [
-        format_line("Soort bestelling", "Tel"),
+        format_line("Soort bestelling", soort_bestelling),
         format_line("Bonnummer", bonnummer),
         format_line("Datum", nu.strftime('%d-%m-%Y')),
         format_line("Tijd", nu.strftime('%H:%M')),
         format_line("Betaalmethode", "Cash"),
-        "",
-        format_line("Bezorgtijd", bezorgtijd),
         ""
     ]
+    
+    # Only show levertijd for delivery orders
+    if not is_afhaal:
+        info_lines.append(format_line("Levertijd", levertijd))
+    
+    info_lines.append("")
+    info_lines.append("")  # Extra lege regel voor spacing met adres/QR-code
     info_str = "\n".join(info_lines)
 
     # ============ 3. ADRES (compact, zonder QR hier) ============
@@ -80,27 +113,55 @@ def generate_bon_text(klant, bestelregels, bonnummer, menu_data_for_drinks=None,
             lines.append(current)
         return lines
 
-    address_lines = ["Leveringsadres:"]
-    address_lines.extend(wrap_text(f"{klant['adres']} {klant['nr']}"))
-    address_lines.extend(wrap_text(f"{klant['postcode_gemeente']}"))
-
-    # Telefoon + 1 lege regel erna
-    address_lines.extend(wrap_text(str(klant.get('telefoon', ''))))
-    address_lines.append("")
-
-    # Aanhef + klantnaam (indien bekend)
-    address_lines.append("Dhr. / Mvr.")
-    klant_naam = (klant.get("naam") or "").strip()
-    if klant_naam:
-        address_lines.extend(wrap_text(klant_naam))
-
-
-    address_lines.append("")  # scheiding naar details
-
-
-
-    address_str = "\n".join(address_lines)
-    address_for_qr = f"{klant['adres']} {klant['nr']}, {klant['postcode_gemeente']}, Belgium"
+    # Check if this is a pickup order (afhaal)
+    is_afhaal = klant.get('afhaal', False)
+    
+    if is_afhaal:
+        # For pickup orders, show pickup info instead of delivery address
+        address_lines = ["Afhaal:"]
+        address_lines.append("")  # Empty line
+        # Telefoon
+        address_lines.extend(wrap_text(str(klant.get('telefoon', ''))))
+        address_lines.append("")
+        # Aanhef + klantnaam (indien bekend)
+        address_lines.append("Dhr. / Mvr.")
+        klant_naam = (klant.get("naam") or "").strip()
+        if klant_naam:
+            address_lines.extend(wrap_text(klant_naam))
+        address_lines.append("")  # scheiding naar details
+        address_str = "\n".join(address_lines)
+        # For QR code, use a generic pickup address or just the phone number
+        address_for_qr = f"Afhaal - {klant.get('telefoon', '')}"
+    else:
+        # For delivery orders, show full address
+        address_lines = ["Leveringsadres:"]
+        adres = klant.get('adres', '').strip()
+        nr = klant.get('nr', '').strip()
+        postcode = klant.get('postcode_gemeente', '').strip()
+        
+        if adres or nr:
+            address_lines.extend(wrap_text(f"{adres} {nr}".strip()))
+        if postcode:
+            address_lines.extend(wrap_text(postcode))
+        
+        # Telefoon + 1 lege regel erna
+        address_lines.extend(wrap_text(str(klant.get('telefoon', ''))))
+        address_lines.append("")
+        
+        # Aanhef + klantnaam (indien bekend)
+        address_lines.append("Dhr. / Mvr.")
+        klant_naam = (klant.get("naam") or "").strip()
+        if klant_naam:
+            address_lines.extend(wrap_text(klant_naam))
+        
+        address_lines.append("")  # scheiding naar details
+        address_str = "\n".join(address_lines)
+        
+        # For QR code, build address string
+        if adres and nr and postcode:
+            address_for_qr = f"{adres} {nr}, {postcode}, Belgium"
+        else:
+            address_for_qr = f"Afhaal - {klant.get('telefoon', '')}"
 
     # ============ 4. DETAILS BESTELLING ============
     details_lines = ["Details bestelling"]
@@ -240,6 +301,11 @@ def generate_bon_text(klant, bestelregels, bonnummer, menu_data_for_drinks=None,
             details_lines.append(f"> {item['opmerking']}")
 
     details_lines.append('-' * BON_WIDTH)
+    # Show discount if applicable
+    if korting_bedrag > 0:
+        details_lines.append(f"Subtotaal{'':<{BON_WIDTH - 22}}€ {subtotaal:.2f}".replace('.', ',').replace('?', '€'))
+        details_lines.append(f"Korting ({korting_percentage:.0f}%){'':<{BON_WIDTH - 25}}€ -{korting_bedrag:.2f}".replace('.', ',').replace('?', '€'))
+    
     details_lines.append(f"Totaal{'':<{BON_WIDTH - 18}}€ {totaal:.2f}".replace('.', ',').replace('?', '€'))
     details_str = "\n".join(details_lines)
 
@@ -255,7 +321,7 @@ def generate_bon_text(klant, bestelregels, bonnummer, menu_data_for_drinks=None,
         "",
         "-" * BON_WIDTH,
         f"{'':1s}{'Tarief':<10s}{'Basis':>10s}{'BTW':>10s}{'Totaal':>10s}",
-        f"{'C':1s}{'6%':<10s}{f'€ {basis:.2f}'.replace('.', ','):>10s}{f'€ {btw:.2f}'.replace('.', ','):>10s}{f'€ {totaal:.2f}'.replace('.', ','):>10s}",
+        f"{'':1s}{'C 6%':<10s}{f'€ {basis:.2f}'.replace('.', ','):>10s}{f'€ {btw:.2f}'.replace('.', ','):>10s}{f'€ {totaal:.2f}'.replace('.', ','):>10s}",
         f"{'':1s}{'':10s}{f'€ {basis:.2f}'.replace('.', ','):>10s}{f'€ {btw:.2f}'.replace('.', ','):>10s}{f'€ {totaal:.2f}'.replace('.', ','):>10s}",
         ""
     ]

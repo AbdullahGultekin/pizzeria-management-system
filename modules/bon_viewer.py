@@ -6,8 +6,15 @@ import subprocess
 import sys
 import json
 from PIL import Image, ImageTk
-import qrcode
 import urllib.parse  # <-- Correcte import!
+
+# Optional QR code support
+try:
+    import qrcode
+    QRCODE_AVAILABLE = True
+except ImportError:
+    QRCODE_AVAILABLE = False
+    qrcode = None
 
 # Importeer generate_bon_text van de bon_generator module
 from bon_generator import generate_bon_text
@@ -56,16 +63,85 @@ def open_bon_viewer(root_window, klant_data, bestelregels, bonnummer, menu_data_
     main_bon_frame = Frame(bon_win)
     main_bon_frame.pack(padx=5, pady=5, fill="both", expand=True)
 
-    # Frame voor de QR-code en adres bovenaan
+    # Frame voor adres en QR-code naast elkaar
     qr_addr_frame = Frame(main_bon_frame)
     qr_addr_frame.pack(fill="x", pady=(2, 10))
 
-    try:
-        # Bouw direct een Google Maps URL (meest universeel)
-        encoded_addr = urllib.parse.quote_plus(address_for_qr)
+    # Links: Adres tekst
+    address_text_frame = Frame(qr_addr_frame)
+    address_text_frame.pack(side="left", fill="both", expand=True, padx=(0, 5))
+    
+    address_label = Label(
+        address_text_frame, 
+        text=address_str, 
+        font=("Courier", 8), 
+        justify="left",
+        anchor="w"
+    )
+    address_label.pack(anchor="w")
 
-        # Google Maps URL die op alle apparaten werkt
-        maps_url = f"https://www.google.com/maps/search/?api=1&query={encoded_addr}"
+    # Rechts: QR-code
+    qr_code_frame = Frame(qr_addr_frame)
+    qr_code_frame.pack(side="right", padx=(5, 0))
+
+    try:
+        if not QRCODE_AVAILABLE:
+            raise ImportError("qrcode module not installed")
+        
+        # Bouw smart navigation URL die automatisch de juiste app opent
+        encoded_addr = urllib.parse.quote_plus(address_for_qr)
+        
+        # Smart navigation: gebruik een inline JavaScript redirect via data URL
+        # Dit werkt zonder externe server en detecteert automatisch het platform
+        # iOS → Apple Maps, Android → Waze (of Google Maps), Desktop → Google Maps
+        
+        # Build navigation URLs for different platforms
+        google_url = f"https://www.google.com/maps/search/?api=1&query={encoded_addr}"
+        waze_url = f"https://waze.com/ul?q={encoded_addr}"
+        apple_url = f"http://maps.apple.com/?q={encoded_addr}"
+        
+        # Create smart redirect HTML with JavaScript
+        # This will try to open the best app for the platform
+        redirect_html = f"""<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>Navigatie</title>
+<script>
+(function() {{
+    var addr = decodeURIComponent('{encoded_addr}');
+    var ua = navigator.userAgent;
+    var isIOS = /iPad|iPhone|iPod/.test(ua) && !window.MSStream;
+    var isAndroid = /android/i.test(ua);
+    
+    if (isIOS) {{
+        // iOS: Try Apple Maps first
+        window.location = 'maps://?q=' + encodeURIComponent(addr);
+        setTimeout(function() {{
+            window.location = 'http://maps.apple.com/?q=' + encodeURIComponent(addr);
+        }}, 500);
+    }} else if (isAndroid) {{
+        // Android: Try Waze first, then Google Maps
+        window.location = 'waze://?q=' + encodeURIComponent(addr);
+        setTimeout(function() {{
+            window.location = 'https://waze.com/ul?q=' + encodeURIComponent(addr);
+        }}, 500);
+        setTimeout(function() {{
+            window.location = 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(addr);
+        }}, 1000);
+    }} else {{
+        // Desktop: Use Google Maps
+        window.location = 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(addr);
+    }}
+}})();
+</script>
+<body><p>Bezig met openen navigatie app...</p>
+<p><a href="{google_url}">Google Maps</a> | 
+<a href="{waze_url}">Waze</a> | 
+<a href="{apple_url}">Apple Maps</a></p>
+</body></html>"""
+        
+        # Convert to data URL (works without external server)
+        import base64
+        html_encoded = base64.b64encode(redirect_html.encode('utf-8')).decode('utf-8')
+        maps_url = f"data:text/html;base64,{html_encoded}"
 
         # Genereer QR met de online URL
         qr = qrcode.QRCode(version=1, box_size=1, border=1)
@@ -74,19 +150,16 @@ def open_bon_viewer(root_window, klant_data, bestelregels, bonnummer, menu_data_
         qr_img = qr.make_image(fill_color='black', back_color='white').resize((50, 50), Image.LANCZOS)
         bon_win.qr_photo = ImageTk.PhotoImage(qr_img)
 
-        qr_lbl = Label(qr_addr_frame, image=bon_win.qr_photo, anchor="center")
+        qr_lbl = Label(qr_code_frame, image=bon_win.qr_photo, anchor="center")
         qr_lbl.pack(anchor="center")
-        Label(qr_addr_frame, text="Scan voor navigatie", font=("Courier New", 6), anchor="center").pack(
+        Label(qr_code_frame, text="Scan voor navigatie", font=("Courier", 6), anchor="center").pack(
             anchor="center", pady=(0, 3))
 
-        # Adres onder de QR-code
-        Label(qr_addr_frame, text=address_str, font=("Courier New", 8), justify="center",
-              anchor="center").pack(anchor="center", pady=(0, 8))
-
     except ImportError:
-        Label(qr_addr_frame, text="[QR-fout: PIL of qrcode ontbreekt]", fg='red', anchor="center").pack(anchor="center")
+        Label(qr_code_frame, text="[QR-code niet\nbeschikbaar]", 
+              fg='orange', anchor="center", font=("Courier", 6), justify="center").pack(anchor="center")
     except Exception as e:
-        Label(qr_addr_frame, text=f"[QR-fout: {e}]", fg='red', anchor="center").pack(anchor="center")
+        Label(qr_code_frame, text=f"[QR-fout:\n{e}]", fg='red', anchor="center", font=("Courier", 6)).pack(anchor="center")
 
     # Knoppen voor Printen en Sluiten
     button_frame = Frame(main_bon_frame, pady=5)
@@ -96,7 +169,7 @@ def open_bon_viewer(root_window, klant_data, bestelregels, bonnummer, menu_data_
     bon_display = scrolledtext.ScrolledText(
         main_bon_frame,
         wrap=tk.NONE,
-        font=("Courier New", 8),
+        font=("Courier", 8),
         width=bon_width_from_generator,
         height=34
     )

@@ -416,15 +416,17 @@
       ],
       "bijgerecht_aantal": 2,
       "sauzen": [
-        "Looksaus",
-        "Samurai",
-        "Cocktail",
-        "Curry",
-        "Andalouse",
-        "Ketchup",
-        "Mayonaise",
-        "Bbqsaus"
-      ],
+      "Looksaus",
+      "Samurai",
+      "Cocktail",
+      "Currysaus",
+      "Provencaalse",
+      "Andalouse",
+      "Ketchup",
+      "Mayonaise",
+      "Sambal",
+      "Bbqsaus"
+    ],
       "sauzen_aantal": 4,
       "garnering": {
         "Extra feta": 4
