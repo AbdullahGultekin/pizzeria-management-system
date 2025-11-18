@@ -35,7 +35,8 @@ class OrderService:
         order_items: List[Dict[str, Any]],
         opmerking: Optional[str] = None,
         koerier_id: Optional[int] = None,
-        levertijd: Optional[str] = None
+        levertijd: Optional[str] = None,
+        korting_percentage: float = 0.0
     ) -> Tuple[bool, Optional[str]]:
         """
         Create a new order.
@@ -46,6 +47,7 @@ class OrderService:
             opmerking: Optional order notes
             koerier_id: Optional courier ID
             levertijd: Optional delivery time (e.g., "19:30")
+            korting_percentage: Optional discount percentage (default: 0.0)
             
         Returns:
             Tuple of (success, bonnummer)

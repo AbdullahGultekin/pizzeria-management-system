@@ -1,3 +1,87 @@
 {
-  "thermal_printer_name": "Default"
+  "thermal_printer_name": "Default",
+  "category_order": [
+    "schotels",
+    "grote-broodjes",
+    "turks-brood",
+    "klein-broodjes",
+    "durum",
+    "Kapsalons",
+    "Small pizza's",
+    "Medium pizza's",
+    "Large pizza's",
+    "lookbrood",
+    "pasta's",
+    "alforno",
+    "mix schotels",
+    "visgerechten",
+    "vegetarisch broodjes",
+    "dranken",
+    "salades",
+    "extra's",
+    "desserten",
+    "sauzen"
+  ],
+  "product_order": {
+    "Kapsalons": [
+      "Kapsalon pita",
+      "Kapsalon kip",
+      "Kapsalon lams",
+      "Kapsalon kip/pita",
+      "Kapsalon pita/lams",
+      "Kapsalon kip/lams",
+      "Kapsalon kip/lams/pita",
+      "Kapsalon Veggie"
+    ],
+    "extra's": [
+      "Extra brood",
+      "Portie frieten",
+      "Portie kroketten",
+      "Portie aardappelen",
+      "Portie olijven",
+      "Portie feta",
+      "Portie feta met olijven",
+      "Portie falafel",
+      "Portie calamares",
+      "Portie pikante pepers",
+      "Portie zachte pepers",
+      "Portie gemengde pepers",
+      "Cream cheese jalapenos",
+      "American potatoes",
+      "Chicken wings",
+      "Chicken nuggets",
+      "Chicken bouts"
+    ],
+    "sauzen": [
+      "Looksaus",
+      "Currysaus",
+      "Coctailsaus",
+      "Samuraisaus",
+      "Provencaalse",
+      "Andalousesaus",
+      "Sambal",
+      "Mayonaise",
+      "Ketchup",
+      "Bbqsaus",
+      "Looksaus"
+    ],
+    "pasta's": [
+      "Kinder spaghetti",
+      "Napolitana",
+      "Bolognese",
+      "Boromeo",
+      "Funghi",
+      "Carbonara",
+      "Salmone",
+      "Pollo",
+      "Diabolique",
+      "Tonno",
+      "Frutti di mare",
+      "Quattro formaggi",
+      "Sardegna",
+      "Pollo verdure",
+      "Lams verdure",
+      "Dello chef"
+    ]
+  }
 }

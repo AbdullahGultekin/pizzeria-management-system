@@ -66,7 +66,7 @@ class HistoryManager:
         main_container = tk.Frame(self.parent, bg=HistoryUI.COLORS['bg_primary'])
         main_container.pack(fill=tk.BOTH, expand=True, padx=0, pady=0)
         
-        # Top section (filters and stats)
+        # Top section (filters)
         top_section = tk.Frame(main_container, bg=HistoryUI.COLORS['bg_primary'])
         top_section.pack(fill=tk.X, padx=0, pady=0)
         
@@ -78,9 +78,20 @@ class HistoryManager:
             on_refresh=lambda: self.refresh_data(force=True)
         )
         
-        # Setup statistics panel in top section
+        # Buttons section - above statistics, clearly visible
+        buttons_section = tk.Frame(main_container, bg=HistoryUI.COLORS['bg_primary'])
+        buttons_section.pack(fill=tk.X, padx=0, pady=(5, 5))
+        
+        # Setup action buttons in buttons section
+        self.setup_buttons(buttons_section)
+        
+        # Statistics section - below buttons
+        stats_section = tk.Frame(main_container, bg=HistoryUI.COLORS['bg_primary'])
+        stats_section.pack(fill=tk.X, padx=0, pady=0)
+        
+        # Setup statistics panel in stats section
         initial_stats = {'count': 0, 'total': 0.0, 'average': 0.0}
-        stats_frame, self.stats_vars = self.ui.create_statistics_panel(top_section, initial_stats)
+        stats_frame, self.stats_vars = self.ui.create_statistics_panel(stats_section, initial_stats)
         
         # Middle section (table) - expandable
         middle_section = tk.Frame(main_container, bg=HistoryUI.COLORS['bg_primary'])
@@ -95,25 +106,22 @@ class HistoryManager:
         # Bind single click to show details (optional, can be removed if not needed)
         self.tree.bind("<Button-1>", lambda e: self._on_table_click(e))
         
-        # Bottom section (buttons) - fixed at bottom
-        bottom_section = tk.Frame(main_container, bg=HistoryUI.COLORS['bg_primary'])
-        bottom_section.pack(fill=tk.X, padx=0, pady=(0, 0))
-        
-        # Setup action buttons in bottom section
-        self.setup_buttons(bottom_section)
-        
         # Load initial data
         self.refresh_data()
     
     def setup_buttons(self, parent: tk.Widget) -> None:
         """Setup action buttons."""
-        # Create button frame
-        button_frame = tk.Frame(parent, bg=HistoryUI.COLORS['bg_primary'], padx=15, pady=12)
-        button_frame.pack(fill=tk.X, padx=10, pady=(10, 10))
+        # Create button frame with more prominent styling
+        button_frame = tk.Frame(parent, bg=HistoryUI.COLORS['bg_primary'], padx=15, pady=15)
+        button_frame.pack(fill=tk.X, padx=10, pady=(5, 10))
+        
+        # Add a subtle border/background to make buttons more visible
+        button_container = tk.Frame(button_frame, bg=HistoryUI.COLORS['bg_secondary'], relief="flat", borderwidth=1)
+        button_container.pack(fill=tk.X, padx=5, pady=5)
         
         # Left side - primary actions
-        left_buttons = tk.Frame(button_frame, bg=HistoryUI.COLORS['bg_primary'])
-        left_buttons.pack(side=tk.LEFT)
+        left_buttons = tk.Frame(button_container, bg=HistoryUI.COLORS['bg_secondary'])
+        left_buttons.pack(side=tk.LEFT, padx=10, pady=8)
         
         # Edit button
         edit_btn = tk.Button(
@@ -122,10 +130,10 @@ class HistoryManager:
             command=self.edit_order,
             bg=HistoryUI.COLORS['bg_success'],
             fg="white",
-            font=("Arial", 10, "bold"),
+            font=("Arial", 11, "bold"),
             relief="flat",
-            padx=20,
-            pady=8,
+            padx=25,
+            pady=10,
             cursor="hand2"
         )
         edit_btn.pack(side=tk.LEFT, padx=(0, 10))
@@ -137,10 +145,10 @@ class HistoryManager:
             command=self.reopen_order,
             bg=HistoryUI.COLORS['bg_info'],
             fg="white",
-            font=("Arial", 10, "bold"),
+            font=("Arial", 11, "bold"),
             relief="flat",
-            padx=20,
-            pady=8,
+            padx=25,
+            pady=10,
             cursor="hand2"
         )
         reopen_btn.pack(side=tk.LEFT, padx=(0, 10))
@@ -152,17 +160,17 @@ class HistoryManager:
             command=self.show_order_details,
             bg=HistoryUI.COLORS['bg_accent'],
             fg="white",
-            font=("Arial", 10, "bold"),
+            font=("Arial", 11, "bold"),
             relief="flat",
-            padx=20,
-            pady=8,
+            padx=25,
+            pady=10,
             cursor="hand2"
         )
         details_btn.pack(side=tk.LEFT, padx=(0, 10))
         
         # Right side - danger actions
-        right_buttons = tk.Frame(button_frame, bg=HistoryUI.COLORS['bg_primary'])
-        right_buttons.pack(side=tk.RIGHT)
+        right_buttons = tk.Frame(button_container, bg=HistoryUI.COLORS['bg_secondary'])
+        right_buttons.pack(side=tk.RIGHT, padx=10, pady=8)
         
         # Delete button
         delete_btn = tk.Button(
@@ -171,10 +179,10 @@ class HistoryManager:
             command=self.delete_order,
             bg=HistoryUI.COLORS['bg_danger'],
             fg="white",
-            font=("Arial", 10, "bold"),
+            font=("Arial", 11, "bold"),
             relief="flat",
-            padx=20,
-            pady=8,
+            padx=25,
+            pady=10,
             cursor="hand2"
         )
         delete_btn.pack(side=tk.LEFT, padx=(0, 10))
@@ -186,10 +194,10 @@ class HistoryManager:
             command=self.delete_all_orders,
             bg="#8B0000",
             fg="white",
-            font=("Arial", 10, "bold"),
+            font=("Arial", 11, "bold"),
             relief="flat",
-            padx=20,
-            pady=8,
+            padx=25,
+            pady=10,
             cursor="hand2"
         )
         delete_all_btn.pack(side=tk.LEFT)
