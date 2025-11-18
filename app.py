@@ -516,7 +516,22 @@ Navigatie:
             return
         
         import win32print
+        from utils.print_utils import get_available_printers
+        
         printer_name = self.app_settings.get("thermal_printer_name", "Default")
+        
+        # Check if printer name is valid
+        if not printer_name or printer_name == "Default":
+            messagebox.showwarning(
+                "Printer niet geconfigureerd",
+                "Er is geen printer geconfigureerd.\n\n"
+                "Ga naar Instellingen > Printer Instellingen om een printer te selecteren."
+            )
+            return
+        
+        # Try to get available printers to suggest alternatives
+        available_printers = get_available_printers()
+        
         try:
             hprinter = win32print.OpenPrinter(printer_name)
             try:
@@ -534,7 +549,30 @@ Navigatie:
             finally:
                 win32print.ClosePrinter(hprinter)
         except Exception as e:
-            messagebox.showerror("Fout bij afdrukken", f"Kon de bon niet afdrukken.\n\nFoutdetails: {e}")
+            error_msg = str(e)
+            if "Ongeldige printernaam" in error_msg or "Invalid printer name" in error_msg or "1801" in error_msg:
+                # Build error message with available printers
+                error_text = (
+                    f"De printer '{printer_name}' kon niet worden gevonden.\n\n"
+                    f"Controleer:\n"
+                    f"1. Of de printer is aangesloten en ingeschakeld\n"
+                    f"2. Of de printer naam exact overeenkomt met Windows\n"
+                    f"3. Open Instellingen > Printer Instellingen om de juiste naam te selecteren\n\n"
+                )
+                
+                if available_printers:
+                    error_text += f"Beschikbare printers ({len(available_printers)}):\n"
+                    for i, printer in enumerate(available_printers[:5], 1):  # Show first 5
+                        error_text += f"  {i}. {printer}\n"
+                    if len(available_printers) > 5:
+                        error_text += f"  ... en {len(available_printers) - 5} meer\n"
+                    error_text += "\n"
+                
+                error_text += f"Foutdetails: {error_msg}"
+                
+                messagebox.showerror("Fout bij afdrukken", error_text)
+            else:
+                messagebox.showerror("Fout bij afdrukken", f"Kon de bon niet afdrukken.\n\nFoutdetails: {error_msg}")
     
     def update_overzicht(self) -> None:
         """Update order overview display with enhanced formatting."""

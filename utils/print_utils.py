@@ -102,6 +102,19 @@ def _save_and_print_from_preview(
         return
 
     printer_name = app_settings.get("thermal_printer_name", "Default")
+    
+    # Check if printer name is valid
+    if not printer_name or printer_name == "Default":
+        messagebox.showwarning(
+            "Printer niet geconfigureerd",
+            "Er is geen printer geconfigureerd.\n\n"
+            "Ga naar Instellingen > Printer Instellingen om een printer te selecteren."
+        )
+        return
+    
+    # Try to get available printers to suggest alternatives
+    available_printers = get_available_printers()
+    
     try:
         hprinter = win32print.OpenPrinter(printer_name)
         try:
@@ -122,15 +135,26 @@ def _save_and_print_from_preview(
     except Exception as e:
         error_msg = str(e)
         if "Ongeldige printernaam" in error_msg or "Invalid printer name" in error_msg or "1801" in error_msg:
-            messagebox.showerror(
-                "Fout bij afdrukken",
+            # Build error message with available printers
+            error_text = (
                 f"De printer '{printer_name}' kon niet worden gevonden.\n\n"
                 f"Controleer:\n"
                 f"1. Of de printer is aangesloten en ingeschakeld\n"
-                f"2. Of de printer naam correct is in Instellingen > Printer Instellingen\n"
-                f"3. Of de printer beschikbaar is in Windows Printer Instellingen\n\n"
-                f"Foutdetails: {error_msg}"
+                f"2. Of de printer naam exact overeenkomt met Windows\n"
+                f"3. Open Instellingen > Printer Instellingen om de juiste naam te selecteren\n\n"
             )
+            
+            if available_printers:
+                error_text += f"Beschikbare printers ({len(available_printers)}):\n"
+                for i, printer in enumerate(available_printers[:5], 1):  # Show first 5
+                    error_text += f"  {i}. {printer}\n"
+                if len(available_printers) > 5:
+                    error_text += f"  ... en {len(available_printers) - 5} meer\n"
+                error_text += "\n"
+            
+            error_text += f"Foutdetails: {error_msg}"
+            
+            messagebox.showerror("Fout bij afdrukken", error_text)
         else:
             messagebox.showerror("Fout bij afdrukken", f"Kon de bon niet afdrukken.\n\nFoutdetails: {error_msg}")
 
@@ -168,6 +192,26 @@ def find_printer_usb_ids() -> None:
         messagebox.showerror("Fout", "PyUSB niet geïnstalleerd. Installeer met: pip install pyusb")
 
 
+def get_available_printers() -> list:
+    """Get list of available Windows printers.
+    
+    Returns:
+        List of printer names
+    """
+    if not WIN32PRINT_AVAILABLE:
+        return []
+    
+    try:
+        printers = []
+        printer_info = win32print.EnumPrinters(win32print.PRINTER_ENUM_LOCAL | win32print.PRINTER_ENUM_CONNECTIONS)
+        for printer in printer_info:
+            printers.append(printer[2])  # printer[2] contains the printer name
+        return sorted(printers)
+    except Exception as e:
+        logger.exception(f"Error getting printer list: {e}")
+        return []
+
+
 def open_printer_settings(root: tk.Tk, app_settings: Dict[str, Any], settings_file: str = "settings.json") -> None:
     """Open printer settings dialog.
     
@@ -177,24 +221,119 @@ def open_printer_settings(root: tk.Tk, app_settings: Dict[str, Any], settings_fi
         settings_file: Path to settings JSON file
     """
     from config import save_json_file
+    from tkinter import ttk
     
     settings_win = tk.Toplevel(root)
     settings_win.title("Printer Instellingen")
-    settings_win.geometry("400x150")
+    settings_win.geometry("500x250")
     settings_win.transient(root)
     settings_win.grab_set()
 
-    tk.Label(settings_win, text="Naam thermische printer (of 'Default'):", font=("Arial", 11, "bold")).pack(pady=10)
+    tk.Label(settings_win, text="Selecteer thermische printer:", font=("Arial", 11, "bold")).pack(pady=10)
 
-    printer_name_var = tk.StringVar(value=app_settings.get("thermal_printer_name", "Default"), master=settings_win)
-    printer_entry = tk.Entry(settings_win, textvariable=printer_name_var, width=40, font=("Arial", 11))
-    printer_entry.pack(pady=5)
+    # Get available printers
+    available_printers = get_available_printers()
+    current_printer = app_settings.get("thermal_printer_name", "Default")
+    
+    # Frame for printer selection
+    printer_frame = tk.Frame(settings_win)
+    printer_frame.pack(pady=5, padx=20, fill=tk.X)
+    
+    printer_name_var = tk.StringVar(value=current_printer, master=settings_win)
+    
+    if available_printers:
+        # Use Combobox if printers are available
+        printer_combo = ttk.Combobox(
+            printer_frame,
+            textvariable=printer_name_var,
+            values=available_printers,
+            width=45,
+            font=("Arial", 10),
+            state="readonly"
+        )
+        printer_combo.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        
+        # Set current selection if it exists in the list
+        if current_printer in available_printers:
+            printer_combo.current(available_printers.index(current_printer))
+        elif available_printers:
+            printer_combo.current(0)  # Select first printer if current not found
+        
+        # Manual entry option
+        tk.Label(settings_win, text="Of voer handmatig in:", font=("Arial", 9)).pack(pady=(5, 0))
+        manual_entry = tk.Entry(settings_win, width=45, font=("Arial", 10))
+        manual_entry.pack(pady=5)
+        manual_entry.insert(0, current_printer if current_printer not in available_printers else "")
+        
+        def on_combo_change(event=None):
+            manual_entry.delete(0, tk.END)
+            manual_entry.insert(0, printer_name_var.get())
+        
+        def on_manual_change(event=None):
+            printer_name_var.set(manual_entry.get())
+        
+        printer_combo.bind("<<ComboboxSelected>>", on_combo_change)
+        manual_entry.bind("<KeyRelease>", on_manual_change)
+        
+        tk.Label(
+            settings_win,
+            text=f"Gevonden printers: {len(available_printers)}",
+            font=("Arial", 8),
+            fg="gray"
+        ).pack(pady=(0, 5))
+    else:
+        # Fallback to entry if no printers found
+        printer_entry = tk.Entry(printer_frame, textvariable=printer_name_var, width=45, font=("Arial", 10))
+        printer_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        tk.Label(
+            settings_win,
+            text="Geen printers gevonden. Voer de exacte printer naam in zoals deze in Windows staat.",
+            font=("Arial", 8),
+            fg="orange",
+            wraplength=450
+        ).pack(pady=(5, 10))
 
     def save_settings():
-        app_settings["thermal_printer_name"] = printer_name_var.get().strip()
+        printer_name = printer_name_var.get().strip()
+        if not printer_name:
+            messagebox.showwarning("Waarschuwing", "Voer een printer naam in.")
+            return
+        
+        app_settings["thermal_printer_name"] = printer_name
         if save_json_file(settings_file, app_settings):
-            messagebox.showinfo("Opgeslagen", "Printerinstellingen succesvol opgeslagen!")
+            messagebox.showinfo("Opgeslagen", f"Printerinstellingen opgeslagen!\n\nPrinter: {printer_name}")
             settings_win.destroy()
 
-    tk.Button(settings_win, text="Opslaan", command=save_settings, bg="#D1FFD1", font=("Arial", 10)).pack(pady=10)
+    button_frame = tk.Frame(settings_win)
+    button_frame.pack(pady=10)
+    
+    tk.Button(button_frame, text="Opslaan", command=save_settings, bg="#D1FFD1", font=("Arial", 10), padx=20).pack(side=tk.LEFT, padx=5)
+    
+    def test_printer():
+        """Test if selected printer is available."""
+        printer_name = printer_name_var.get().strip()
+        if not printer_name:
+            messagebox.showwarning("Waarschuwing", "Selecteer eerst een printer.")
+            return
+        
+        try:
+            hprinter = win32print.OpenPrinter(printer_name)
+            win32print.ClosePrinter(hprinter)
+            messagebox.showinfo("Succes", f"Printer '{printer_name}' is beschikbaar en werkt!")
+        except Exception as e:
+            error_msg = str(e)
+            if "1801" in error_msg or "Ongeldige printernaam" in error_msg:
+                messagebox.showerror(
+                    "Fout",
+                    f"Printer '{printer_name}' niet gevonden.\n\n"
+                    f"Controleer:\n"
+                    f"1. Of de printer is aangesloten en ingeschakeld\n"
+                    f"2. Of de naam exact overeenkomt met Windows\n"
+                    f"3. Open Windows Instellingen > Printers om de exacte naam te zien\n\n"
+                    f"Fout: {error_msg}"
+                )
+            else:
+                messagebox.showerror("Fout", f"Kan printer niet testen: {error_msg}")
+    
+    tk.Button(button_frame, text="Test Printer", command=test_printer, bg="#D1E7FF", font=("Arial", 10), padx=20).pack(side=tk.LEFT, padx=5)
 
