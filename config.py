@@ -13,7 +13,8 @@ logger = get_logger("pizzeria.config")
 DEFAULT_SETTINGS = {
     "thermal_printer_name": "Default",
     "category_order": [],
-    "product_order": {}  # Dict mapping category names to ordered product name lists
+    "product_order": {},  # Dict mapping category names to ordered product name lists
+    "bon_footer_custom_text": ""  # Custom text to add under opening hours on receipt
 }
 
 SETTINGS_FILE = "settings.json"

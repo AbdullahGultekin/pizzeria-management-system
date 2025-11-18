@@ -45,7 +45,7 @@ from validation import (
 
 # Import refactored modules
 from utils.menu_utils import get_pizza_num, load_menu_categories
-from utils.print_utils import open_printer_settings, show_print_preview as utils_show_print_preview
+from utils.print_utils import open_printer_settings, open_footer_settings, show_print_preview as utils_show_print_preview
 from utils.address_utils import suggest_straat, on_adres_entry, selectie_suggestie, update_straatnamen_json
 from ui.customer_form_enhanced import EnhancedCustomerForm
 from ui.tab_manager import TabManager
@@ -746,6 +746,16 @@ info@pitapizzanapoli.be
                 win32print.WritePrinter(hprinter, ESC + b'E' + b'\x00')  # Bold uit
                 # Openingsuren
                 win32print.WritePrinter(hprinter, b'Van Dins- tot Zon\n vanaf 17 u Tot 20u30\n')
+                
+                # Custom footer tekst (indien ingesteld)
+                custom_footer_text = self.app_settings.get("bon_footer_custom_text", "").strip()
+                if custom_footer_text:
+                    # Split in regels en print elke regel
+                    for line in custom_footer_text.split('\n'):
+                        if line.strip():  # Alleen niet-lege regels printen
+                            win32print.WritePrinter(hprinter, line.strip().encode('cp858', errors='replace'))
+                            win32print.WritePrinter(hprinter, b'\n')
+                
                 # Reset uitlijning
                 win32print.WritePrinter(hprinter, ESC + b'a' + b'\x00')  # Links uitlijnen
                 
@@ -1460,6 +1470,17 @@ info@pitapizzanapoli.be
             settings_menu.add_command(label="Webex Configuratie", command=self._configure_webex)
             settings_menu.add_separator()
             settings_menu.add_command(label="Printer Instellingen", command=lambda: open_printer_settings(self.root, self.app_settings))
+            settings_menu.add_command(label="Bon Footer Instellingen", command=lambda: open_footer_settings(self.root, self.app_settings))
+        
+        # Mode switch menu (available in both modes)
+        mode_menu = tk.Menu(self.menubar, tearoff=0)
+        self.menubar.add_cascade(label="Modus", menu=mode_menu)
+        mode_menu.add_command(label="🔄 Modus Selectie", command=self.show_mode_selector)
+        mode_menu.add_separator()
+        if self.mode == "front":
+            mode_menu.add_command(label="🔧 Wissel naar Admin Modus", command=self.switch_to_admin_mode)
+        else:
+            mode_menu.add_command(label="💰 Wissel naar Kassa Modus", command=self.switch_to_front_mode)
         
         help_menu = tk.Menu(self.menubar, tearoff=0)
         self.menubar.add_cascade(label="Help", menu=help_menu)
@@ -1534,14 +1555,14 @@ info@pitapizzanapoli.be
     def setup_other_tabs(self) -> None:
         """Setup tabs for other modules (lazy load) based on mode."""
         if self.mode == "front":
-            # Front mode: Bestellen, Koeriers, Geschiedenis
+            # Front mode: Bestellen, Koeriers (geen Geschiedenis)
             self.tab_manager.add_tab("Koeriers")
-            self.tab_manager.add_tab("Geschiedenis")
         else:
-            # Back mode: Only admin functions (no Bestellen, Koeriers, Geschiedenis)
+            # Back mode: Admin functions + Geschiedenis
             self.tab_manager.add_tab("Menu Management")
             self.tab_manager.add_tab("Extras")
             self.tab_manager.add_tab("Klanten")
+            self.tab_manager.add_tab("Geschiedenis")
             self.tab_manager.add_tab("Rapportage")
             self.tab_manager.add_tab("Backup/Restore")
             self.tab_manager.add_tab("Voorraad")
@@ -2197,24 +2218,81 @@ info@pitapizzanapoli.be
         if not self.root:
             self.setup_ui()
         self.root.mainloop()
+    
+    def show_mode_selector(self) -> None:
+        """Show mode selector dialog to switch modes."""
+        # Create a new Tk root for the mode selector (it needs a Tk root, not Toplevel)
+        temp_root = tk.Tk()
+        temp_root.withdraw()  # Hide it initially
+        
+        mode_selector = ModeSelector(temp_root)
+        selected_mode = mode_selector.show()
+        
+        # Clean up
+        temp_root.destroy()
+        
+        if selected_mode and selected_mode != self.mode:
+            # User selected a different mode, restart application
+            self.switch_mode(selected_mode)
+    
+    def switch_mode(self, new_mode: str) -> None:
+        """Switch to a different mode by restarting the application."""
+        from tkinter import messagebox
+        mode_name = "Admin Modus" if new_mode == "back" else "Kassa Modus"
+        result = messagebox.askyesno(
+            "Modus wisselen",
+            f"Weet u zeker dat u naar {mode_name} wilt wisselen?\n\n"
+            "De applicatie wordt opnieuw gestart.",
+            parent=self.root
+        )
+        if result:
+            self.root.quit()
+            self.root.destroy()
+            # Restart in new mode
+            import sys
+            import os
+            python = sys.executable
+            # Filter out existing mode arguments
+            args = [arg for arg in sys.argv if not arg.startswith("--mode=")]
+            args.append(f"--mode={new_mode}")
+            os.execl(python, python, *args)
+    
+    def switch_to_admin_mode(self) -> None:
+        """Switch to Admin mode by restarting the application."""
+        self.switch_mode("back")
+    
+    def switch_to_front_mode(self) -> None:
+        """Switch to Front (Kassa) mode by restarting the application."""
+        self.switch_mode("front")
 
 
 def main() -> None:
     """Main entry point for the application."""
-    # Create root window for mode selector (will be used as dialog)
-    temp_root = tk.Tk()
+    import sys
     
-    # Show mode selector (uses temp_root as dialog window)
-    mode_selector = ModeSelector(temp_root)
-    selected_mode = mode_selector.show()
+    # Check for command line mode argument
+    selected_mode = None
+    if "--mode=front" in sys.argv:
+        selected_mode = "front"
+    elif "--mode=back" in sys.argv:
+        selected_mode = "back"
     
-    # Destroy temporary root after selection
-    temp_root.destroy()
-    
-    # If no mode selected, exit
+    # If no mode specified, show mode selector
     if not selected_mode:
-        logger.warning("No mode selected, exiting application")
-        return
+        # Create root window for mode selector (will be used as dialog)
+        temp_root = tk.Tk()
+        
+        # Show mode selector (uses temp_root as dialog window)
+        mode_selector = ModeSelector(temp_root)
+        selected_mode = mode_selector.show()
+        
+        # Destroy temporary root after selection
+        temp_root.destroy()
+        
+        # If no mode selected, exit
+        if not selected_mode:
+            logger.warning("No mode selected, exiting application")
+            return
     
     # Log selected mode
     logger.info(f"Starting application in {selected_mode.upper()} mode")

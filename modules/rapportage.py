@@ -100,6 +100,185 @@ def open_rapportage(root):
                                                                                                         pady=2)
     ttk.Button(export_frame, text="Excel Koeriers (.xlsx)",
                command=lambda: export_excel(*export_data["koeriers"], "koeriers.xlsx")).pack(fill=tk.X, pady=2)
+    
+    # Z-Rapport sectie
+    zrapport_frame = tk.LabelFrame(left, text="Z-Rapport (Dagafsluiting)", padx=8, pady=8)
+    zrapport_frame.pack(fill=tk.X, pady=(10, 0))
+    
+    def generate_z_rapport():
+        """Genereer en toon Z-rapport voor vandaag."""
+        today = datetime.date.today()
+        today_str = today.strftime("%Y-%m-%d")
+        
+        conn = database.get_db_connection()
+        cur = conn.cursor()
+        
+        # Haal alle bestellingen van vandaag op
+        cur.execute("""
+            SELECT 
+                COUNT(*) AS totaal_bonnen,
+                COALESCE(SUM(totaal), 0) AS totaal_omzet,
+                MIN(tijd) AS eerste_bon,
+                MAX(tijd) AS laatste_bon
+            FROM bestellingen
+            WHERE datum = ?
+        """, (today_str,))
+        
+        summary = cur.fetchone()
+        
+        # Haal overzicht per uur op
+        cur.execute("""
+            SELECT 
+                strftime('%H:00', tijd) AS uur,
+                COUNT(*) AS aantal,
+                COALESCE(SUM(totaal), 0) AS omzet
+            FROM bestellingen
+            WHERE datum = ?
+            GROUP BY uur
+            ORDER BY uur
+        """, (today_str,))
+        
+        per_uur = cur.fetchall()
+        
+        # Haal overzicht per koerier op
+        cur.execute("""
+            SELECT 
+                COALESCE(ko.naam, 'Niet toegewezen') AS koerier,
+                COUNT(*) AS aantal,
+                COALESCE(SUM(b.totaal), 0) AS omzet
+            FROM bestellingen b
+            LEFT JOIN koeriers ko ON ko.id = b.koerier_id
+            WHERE b.datum = ?
+            GROUP BY koerier
+            ORDER BY omzet DESC
+        """, (today_str,))
+        
+        per_koerier = cur.fetchall()
+        
+        conn.close()
+        
+        # Maak Z-rapport venster
+        z_win = tk.Toplevel(win)
+        z_win.title(f"Z-Rapport - {today.strftime('%d/%m/%Y')}")
+        z_win.geometry("700x800")
+        z_win.transient(win)
+        
+        # Scrollable text widget
+        from tkinter import scrolledtext
+        report_text = scrolledtext.ScrolledText(z_win, wrap=tk.WORD, font=("Courier", 10))
+        report_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # Genereer rapport tekst
+        report_lines = []
+        report_lines.append("=" * 60)
+        report_lines.append(" " * 15 + "Z-RAPPORT")
+        report_lines.append(" " * 10 + "DAGAFSLUITING")
+        report_lines.append("=" * 60)
+        report_lines.append("")
+        report_lines.append(f"Datum: {today.strftime('%d/%m/%Y')}")
+        report_lines.append(f"Tijd: {datetime.datetime.now().strftime('%H:%M:%S')}")
+        report_lines.append("")
+        report_lines.append("-" * 60)
+        report_lines.append("SAMENVATTING")
+        report_lines.append("-" * 60)
+        report_lines.append(f"Totaal aantal bonnen: {summary['totaal_bonnen']}")
+        report_lines.append(f"Totale omzet: €{float(summary['totaal_omzet']):.2f}")
+        if summary['eerste_bon']:
+            report_lines.append(f"Eerste bon: {summary['eerste_bon']}")
+            report_lines.append(f"Laatste bon: {summary['laatste_bon']}")
+        if summary['totaal_bonnen'] > 0:
+            gemiddeld = float(summary['totaal_omzet']) / summary['totaal_bonnen']
+            report_lines.append(f"Gemiddeld per bon: €{gemiddeld:.2f}")
+        report_lines.append("")
+        
+        report_lines.append("-" * 60)
+        report_lines.append("OVERZICHT PER UUR")
+        report_lines.append("-" * 60)
+        report_lines.append(f"{'Uur':<10} {'Aantal':<10} {'Omzet (€)':<15}")
+        report_lines.append("-" * 60)
+        for row in per_uur:
+            report_lines.append(f"{row['uur']:<10} {row['aantal']:<10} €{float(row['omzet']):.2f}")
+        report_lines.append("")
+        
+        report_lines.append("-" * 60)
+        report_lines.append("OVERZICHT PER KOERIER")
+        report_lines.append("-" * 60)
+        report_lines.append(f"{'Koerier':<20} {'Aantal':<10} {'Omzet (€)':<15}")
+        report_lines.append("-" * 60)
+        for row in per_koerier:
+            report_lines.append(f"{row['koerier']:<20} {row['aantal']:<10} €{float(row['omzet']):.2f}")
+        report_lines.append("")
+        
+        report_lines.append("=" * 60)
+        report_lines.append(" " * 20 + "EINDE RAPPORT")
+        report_lines.append("=" * 60)
+        
+        # Voeg tekst toe
+        report_text.insert("1.0", "\n".join(report_lines))
+        report_text.config(state=tk.DISABLED)
+        
+        # Knoppen
+        button_frame = tk.Frame(z_win)
+        button_frame.pack(pady=10)
+        
+        def print_z_rapport():
+            """Print Z-rapport naar printer."""
+            try:
+                import win32print
+                from config import load_settings
+                
+                app_settings = load_settings()
+                printer_name = app_settings.get("thermal_printer_name", "Default")
+                
+                if not printer_name or printer_name == "Default":
+                    messagebox.showwarning(
+                        "Printer niet geconfigureerd",
+                        "Er is geen printer geconfigureerd.\n\n"
+                        "Ga naar Instellingen > Printer Instellingen om een printer te selecteren."
+                    )
+                    return
+                
+                try:
+                    hprinter = win32print.OpenPrinter(printer_name)
+                    try:
+                        hjob = win32print.StartDocPrinter(hprinter, 1, ("Z-Rapport", None, "RAW"))
+                        win32print.StartPagePrinter(hprinter)
+                        
+                        ESC = b'\x1b'
+                        GS = b'\x1d'
+                        
+                        # Header
+                        win32print.WritePrinter(hprinter, ESC + b'a' + b'\x01')  # Centreren
+                        win32print.WritePrinter(hprinter, GS + b'!' + b'\x11')  # Groot
+                        win32print.WritePrinter(hprinter, b'Z-RAPPORT\n')
+                        win32print.WritePrinter(hprinter, GS + b'!' + b'\x00')  # Normale grootte
+                        win32print.WritePrinter(hprinter, b'\n')
+                        
+                        # Print rapport
+                        for line in report_lines:
+                            win32print.WritePrinter(hprinter, (line + '\n').encode('cp858', errors='replace'))
+                        
+                        win32print.WritePrinter(hprinter, b'\n\n\n')
+                        win32print.WritePrinter(hprinter, GS + b'V' + b'\x00')  # Snij papier
+                        
+                        win32print.EndPagePrinter(hprinter)
+                        win32print.EndDocPrinter(hprinter)
+                        
+                        messagebox.showinfo("Voltooid", "Z-Rapport is afgedrukt!")
+                    finally:
+                        win32print.ClosePrinter(hprinter)
+                except Exception as e:
+                    messagebox.showerror("Fout", f"Kon Z-rapport niet afdrukken:\n{e}")
+            except ImportError:
+                messagebox.showerror("Fout", "Windows printer support niet beschikbaar.")
+        
+        tk.Button(button_frame, text="Print Z-Rapport", command=print_z_rapport, 
+                 bg="#D1FFD1", font=("Arial", 10), padx=20).pack(side=tk.LEFT, padx=5)
+        tk.Button(button_frame, text="Sluiten", command=z_win.destroy, 
+                 bg="#FFADAD", font=("Arial", 10), padx=20).pack(side=tk.LEFT, padx=5)
+    
+    tk.Button(zrapport_frame, text="Genereer Z-Rapport (Vandaag)", 
+             command=generate_z_rapport, bg="#FFE4B5", font=("Arial", 10, "bold")).pack(fill=tk.X, pady=5)
 
     # --- Rechterzijde: tabs met rapporten ---
     right = tk.Frame(paned, padx=10, pady=10)

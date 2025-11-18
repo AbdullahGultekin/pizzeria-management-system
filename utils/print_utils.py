@@ -561,3 +561,64 @@ def open_printer_settings(root: tk.Tk, app_settings: Dict[str, Any], settings_fi
     
     tk.Button(button_frame, text="Test Printer", command=test_printer, bg="#D1E7FF", font=("Arial", 10), padx=20).pack(side=tk.LEFT, padx=5)
 
+
+def open_footer_settings(root: tk.Tk, app_settings: Dict[str, Any], settings_file: str = "settings.json") -> None:
+    """Open footer settings dialog.
+    
+    Args:
+        root: Root Tkinter window
+        app_settings: Application settings dictionary
+        settings_file: Path to settings JSON file
+    """
+    from config import save_json_file
+    
+    settings_win = tk.Toplevel(root)
+    settings_win.title("Bon Footer Instellingen")
+    settings_win.geometry("600x400")
+    settings_win.transient(root)
+    settings_win.grab_set()
+
+    tk.Label(
+        settings_win,
+        text="Aangepaste tekst onder openingsuren:",
+        font=("Arial", 11, "bold")
+    ).pack(pady=10)
+
+    tk.Label(
+        settings_win,
+        text="Deze tekst wordt onder de openingsuren op de bon geprint.\nLaat leeg om geen extra tekst te tonen.",
+        font=("Arial", 9),
+        fg="gray"
+    ).pack(pady=(0, 10))
+
+    # Text widget for multi-line input
+    text_frame = tk.Frame(settings_win)
+    text_frame.pack(pady=5, padx=20, fill=tk.BOTH, expand=True)
+    
+    from tkinter import scrolledtext
+    footer_text_widget = scrolledtext.ScrolledText(
+        text_frame,
+        wrap=tk.WORD,
+        width=60,
+        height=12,
+        font=("Arial", 10)
+    )
+    footer_text_widget.pack(fill=tk.BOTH, expand=True)
+    
+    # Load current value
+    current_text = app_settings.get("bon_footer_custom_text", "")
+    footer_text_widget.insert("1.0", current_text)
+
+    def save_settings():
+        custom_text = footer_text_widget.get("1.0", tk.END).strip()
+        app_settings["bon_footer_custom_text"] = custom_text
+        if save_json_file(settings_file, app_settings):
+            messagebox.showinfo("Opgeslagen", "Footer instellingen opgeslagen!")
+            settings_win.destroy()
+
+    button_frame = tk.Frame(settings_win)
+    button_frame.pack(pady=10)
+    
+    tk.Button(button_frame, text="Opslaan", command=save_settings, bg="#D1FFD1", font=("Arial", 10), padx=20).pack(side=tk.LEFT, padx=5)
+    tk.Button(button_frame, text="Annuleren", command=settings_win.destroy, bg="#FFADAD", font=("Arial", 10), padx=20).pack(side=tk.LEFT, padx=5)
+

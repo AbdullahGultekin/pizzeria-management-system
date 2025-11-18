@@ -153,6 +153,21 @@ class HistoryManager:
         )
         reopen_btn.pack(side=tk.LEFT, padx=(0, 10))
         
+        # Renumber button
+        renumber_btn = tk.Button(
+            left_buttons,
+            text="🔢 Hernummer Bonnen",
+            command=self.renumber_receipts,
+            bg="#FFA500",
+            fg="white",
+            font=("Arial", 11, "bold"),
+            relief="flat",
+            padx=25,
+            pady=10,
+            cursor="hand2"
+        )
+        renumber_btn.pack(side=tk.LEFT, padx=(0, 10))
+        
         # Details button
         details_btn = tk.Button(
             left_buttons,
@@ -688,6 +703,128 @@ Opmerking: {order.get('opmerking', 'Geen')}
         except DatabaseError as e:
             logger.exception("Error reopening order")
             messagebox.showerror("Fout", f"Er is een fout opgetreden: {e}", parent=self.parent)
+    
+    def renumber_receipts(self) -> None:
+        """Hernummer alle bonnen zodat ze weer in de juiste volgorde zijn."""
+        from tkinter import messagebox
+        from datetime import datetime
+        import database
+        
+        # Bevestiging vragen
+        result = messagebox.askyesno(
+            "Bonnen hernummeren",
+            "Weet u zeker dat u alle bonnen wilt hernummeren?\n\n"
+            "Dit zorgt ervoor dat alle bonnen opnieuw worden genummerd in volgorde van datum en tijd.\n"
+            "Deze actie kan niet ongedaan worden gemaakt.",
+            parent=self.parent
+        )
+        
+        if not result:
+            return
+        
+        try:
+            conn = database.get_db_connection()
+            cur = conn.cursor()
+            
+            # Haal alle bestellingen op, gesorteerd op datum en tijd
+            cur.execute("""
+                SELECT id, datum, tijd
+                FROM bestellingen
+                ORDER BY datum ASC, tijd ASC
+            """)
+            
+            orders = cur.fetchall()
+            
+            if not orders:
+                messagebox.showinfo("Info", "Geen bestellingen gevonden om te hernummeren.", parent=self.parent)
+                conn.close()
+                return
+            
+            # Hernummer per dag
+            current_date = None
+            day_counter = {}
+            updates = []
+            
+            for order in orders:
+                order_id = order['id']
+                order_date = order['datum']
+                
+                # Reset teller voor nieuwe dag
+                if order_date != current_date:
+                    current_date = order_date
+                    # Parse jaar uit datum
+                    try:
+                        year = int(order_date.split('-')[0])
+                    except (ValueError, IndexError):
+                        year = datetime.now().year
+                    
+                    # Start teller voor deze dag
+                    day_counter[order_date] = {'year': year, 'counter': 0}
+                
+                # Verhoog teller
+                day_counter[order_date]['counter'] += 1
+                counter = day_counter[order_date]['counter']
+                year = day_counter[order_date]['year']
+                
+                # Genereer nieuw bonnummer: YYYYNNNN
+                new_bonnummer = f"{year}{counter:04d}"
+                
+                updates.append((new_bonnummer, order_id))
+            
+            # Update alle bonnummers
+            updated_count = 0
+            for new_bonnummer, order_id in updates:
+                cur.execute("""
+                    UPDATE bestellingen
+                    SET bonnummer = ?
+                    WHERE id = ?
+                """, (new_bonnummer, order_id))
+                updated_count += 1
+            
+            conn.commit()
+            conn.close()
+            
+            # Update bon_teller tabel voor alle betrokken dagen
+            conn = database.get_db_connection()
+            cur = conn.cursor()
+            
+            for date_str, info in day_counter.items():
+                try:
+                    # Parse datum om jaar en dag te krijgen
+                    date_obj = datetime.strptime(date_str, "%Y-%m-%d")
+                    year = date_obj.year
+                    day_of_year = date_obj.timetuple().tm_yday
+                    last_number = info['counter']
+                    
+                    # Update bon_teller
+                    cur.execute("""
+                        INSERT OR REPLACE INTO bon_teller (jaar, dag, laatste_nummer)
+                        VALUES (?, ?, ?)
+                    """, (year, day_of_year, last_number))
+                except Exception as e:
+                    logger.warning(f"Kon bon_teller niet updaten voor {date_str}: {e}")
+            
+            conn.commit()
+            conn.close()
+            
+            messagebox.showinfo(
+                "Succes",
+                f"Bonnen succesvol hernummerd!\n\n"
+                f"Aantal bijgewerkte bonnen: {updated_count}\n\n"
+                f"De lijst wordt nu ververst.",
+                parent=self.parent
+            )
+            
+            # Refresh data
+            self.refresh_data()
+            
+        except Exception as e:
+            logger.exception("Error renumbering receipts")
+            messagebox.showerror(
+                "Fout",
+                f"Er is een fout opgetreden bij het hernummeren:\n{e}",
+                parent=self.parent
+            )
 
 
 def open_geschiedenis(

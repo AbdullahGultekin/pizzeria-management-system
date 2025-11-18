@@ -12,7 +12,9 @@ from .print_utils import (
     print_bon_with_qr,
     show_print_preview,
     _save_and_print_from_preview,
-    find_printer_usb_ids
+    find_printer_usb_ids,
+    open_printer_settings,
+    open_footer_settings
 )
 
 __all__ = [
@@ -25,7 +27,9 @@ __all__ = [
     'print_bon_with_qr',
     'show_print_preview',
     '_save_and_print_from_preview',
-    'find_printer_usb_ids'
+    'find_printer_usb_ids',
+    'open_printer_settings',
+    'open_footer_settings'
 ]
 
 
