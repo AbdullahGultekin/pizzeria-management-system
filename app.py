@@ -535,12 +535,237 @@ Navigatie:
         try:
             hprinter = win32print.OpenPrinter(printer_name)
             try:
-                win32print.StartDocPrinter(hprinter, 1, ("Bon", None, "RAW"))
+                hjob = win32print.StartDocPrinter(hprinter, 1, ("Bon", None, "RAW"))
                 win32print.StartPagePrinter(hprinter)
                 
-                lines = full_bon_text_for_print.split('\n')
-                for line in lines:
-                    win32print.WritePrinter(hprinter, (line + '\n').encode('utf-8'))
+                ESC = b'\x1b'
+                GS = b'\x1d'
+                
+                # ============ 1. HEADER ============
+                win32print.WritePrinter(hprinter, ESC + b'a' + b'\x01')  # Centreren
+                win32print.WritePrinter(hprinter, GS + b'!' + b'\x11')  # Groot (dubbele hoogte + breedte)
+                win32print.WritePrinter(hprinter, b'PITA PIZZA NAPOLI\n')
+                win32print.WritePrinter(hprinter, GS + b'!' + b'\x00')  # Normale grootte
+                win32print.WritePrinter(hprinter, b'\n')
+                
+                header_info = """Brugstraat 12 - 9120 Vrasene
+TEL: 03 / 775 72 28
+FAX: 03 / 755 52 22
+BTW: BE 0479.048.950
+Bestel online
+www.pitapizzanapoli.be
+info@pitapizzanapoli.be
+
+"""
+                win32print.WritePrinter(hprinter, header_info.encode('cp437', errors='replace'))
+                
+                # ============ 2. PARSE BON LINES ============
+                bon_lines = full_bon_text_for_print.split('\n')
+                bonnummer_idx = bezorgtijd_idx = address_idx = dhr_mvr_idx = details_idx = 0
+                
+                for i, line in enumerate(bon_lines):
+                    if 'Bonnummer' in line: bonnummer_idx = i
+                    if 'Bezorgtijd' in line: bezorgtijd_idx = i
+                    if 'Leveringsadres:' in line: address_idx = i
+                    if ('Dhr.' in line or 'Mvr.' in line): dhr_mvr_idx = i
+                    if 'Details bestelling' in line: details_idx = i; break
+                
+                # ============ 3. BESTELINFO (tot bezorgtijd) ============
+                win32print.WritePrinter(hprinter, ESC + b'a' + b'\x00')  # Links uitlijnen
+                win32print.WritePrinter(hprinter, '\n'.join(bon_lines[bonnummer_idx:bezorgtijd_idx]).encode('cp437', errors='replace'))
+                
+                # ============ 4. BEZORGTIJD (vet) ============
+                win32print.WritePrinter(hprinter, ESC + b'E' + b'\x01')  # Bold aan
+                win32print.WritePrinter(hprinter, bon_lines[bezorgtijd_idx].encode('cp437', errors='replace'))
+                win32print.WritePrinter(hprinter, b'\n')
+                win32print.WritePrinter(hprinter, ESC + b'E' + b'\x00')  # Bold uit
+                win32print.WritePrinter(hprinter, b'\n')
+                
+                # ============ 5. KLANTNAAM OPHALEN ============
+                klantnaam = ""
+                if klant_data:
+                    klantnaam = klant_data.get("naam", "").strip()
+                
+                if not klantnaam:
+                    # Val terug op bontekst: zoek regel na "Dhr. / Mvr."
+                    if dhr_mvr_idx and dhr_mvr_idx + 1 < len(bon_lines):
+                        possible_name = bon_lines[dhr_mvr_idx + 1].strip()
+                        if possible_name and ("Details bestelling" not in possible_name):
+                            klantnaam = possible_name
+                
+                # ============ 6. LEVERINGSADRES (groot en vet) ============
+                win32print.WritePrinter(hprinter, 'Leveringsadres:\n'.encode('cp858'))
+                win32print.WritePrinter(hprinter, ESC + b'E' + b'\x01')  # Bold aan
+                win32print.WritePrinter(hprinter, GS + b'!' + b'\x01')  # Dubbele hoogte + breedte
+                
+                # Klantnaam printen
+                if klantnaam:
+                    win32print.WritePrinter(hprinter, (klantnaam + '\n').encode('cp858', errors='replace'))
+                
+                # Adres printen
+                adres_end = dhr_mvr_idx if (dhr_mvr_idx > 0 and dhr_mvr_idx > address_idx) else details_idx
+                address_content = bon_lines[address_idx + 1:adres_end] if address_idx > 0 and adres_end > 0 else []
+                for addr_line in address_content:
+                    win32print.WritePrinter(hprinter, addr_line.encode('cp858', errors='replace'))
+                    win32print.WritePrinter(hprinter, b'\n')
+                
+                # Reset stijl
+                win32print.WritePrinter(hprinter, GS + b'!' + b'\x00')  # Normale grootte
+                win32print.WritePrinter(hprinter, ESC + b'E' + b'\x00')  # Bold uit
+                
+                # ============ 7. BESTEL-DETAILS ============
+                win32print.WritePrinter(hprinter, b'\x1B\x74\x13')  # CP858 encoding voor euroteken
+                
+                if details_idx > 0:
+                    # Bereken einde van details sectie
+                    details_end_idx = len(bon_lines)
+                    for i in range(details_idx, len(bon_lines)):
+                        if 'Tarief' in bon_lines[i] or ('Totaal' in bon_lines[i] and i > details_idx + 2):
+                            details_end_idx = i
+                            break
+                    
+                    # "Details bestelling" vet maar normale grootte
+                    win32print.WritePrinter(hprinter, ESC + b'E' + b'\x01')  # Bold aan
+                    win32print.WritePrinter(hprinter, 'Details bestelling\n'.encode('cp858'))
+                    win32print.WritePrinter(hprinter, ESC + b'E' + b'\x00')  # Bold uit
+                    win32print.WritePrinter(hprinter, b'\n')
+                    
+                    # Items GROTER maken - dubbele hoogte + breedte
+                    win32print.WritePrinter(hprinter, ESC + b'a' + b'\x00')  # Links uitlijnen
+                    win32print.WritePrinter(hprinter, GS + b'!' + b'\x01')  # Dubbele hoogte
+                    win32print.WritePrinter(hprinter, ESC + b'E' + b'\x00')  # Bold uit
+                    
+                    current_item_lines = []
+                    first_item = True
+                    
+                    for line in bon_lines[details_idx + 1:details_end_idx]:
+                        stripped_line = line.strip()
+                        if stripped_line and (stripped_line[0].isdigit() and 'x' in line[:5]):
+                            if current_item_lines:
+                                # Print vorige item
+                                win32print.WritePrinter(hprinter, '\n'.join(current_item_lines).encode('cp858'))
+                                win32print.WritePrinter(hprinter, b'\n')
+                                # Reset tijdelijk voor scheidingslijn
+                                win32print.WritePrinter(hprinter, GS + b'!' + b'\x00')  # Normale grootte
+                                win32print.WritePrinter(hprinter, ESC + b'E' + b'\x00')  # Bold uit
+                                win32print.WritePrinter(hprinter, ('-' * 42 + '\n').encode('cp858'))
+                                # Weer groot maken voor volgende item
+                                win32print.WritePrinter(hprinter, GS + b'!' + b'\x01')  # Groot
+                                win32print.WritePrinter(hprinter, ESC + b'E' + b'\x00')  # Bold uit
+                                current_item_lines = []
+                            elif first_item:
+                                first_item = False
+                            current_item_lines.append(line.replace('?', '€'))
+                        else:
+                            if "TE BETALEN" in line:
+                                continue
+                            if stripped_line:
+                                current_item_lines.append(f"> {stripped_line}")
+                    
+                    if current_item_lines:
+                        win32print.WritePrinter(hprinter, '\n'.join(current_item_lines).encode('cp858'))
+                        win32print.WritePrinter(hprinter, b'\n')
+                    
+                    # Reset stijl na details
+                    win32print.WritePrinter(hprinter, GS + b'!' + b'\x00')  # Normale grootte
+                    win32print.WritePrinter(hprinter, ESC + b'E' + b'\x00')  # Bold uit
+                    win32print.WritePrinter(hprinter, ESC + b'a' + b'\x00')  # Links
+                    
+                    # ============ 8. TARIEF-SECTIE ============
+                    tarief_start = -1
+                    for i in range(details_end_idx, len(bon_lines)):
+                        line = bon_lines[i]
+                        if ("Tarief" in line and "Basis" in line and "BTW" in line and "Totaal" in line):
+                            tarief_start = i
+                            break
+                    
+                    if tarief_start >= 0:
+                        tarief_end = len(bon_lines)
+                        for j in range(tarief_start + 1, len(bon_lines)):
+                            if bon_lines[j].strip() == "" or bon_lines[j].startswith("Totaal"):
+                                tarief_end = j
+                                break
+                        tarief_block = "\n".join(bon_lines[tarief_start:tarief_end]).encode('cp858', errors='replace')
+                        win32print.WritePrinter(hprinter, tarief_block)
+                        win32print.WritePrinter(hprinter, b'\n')
+                
+                # ============ 9. TOTAAL (groot, vet, gecentreerd) ============
+                totaal_line = ""
+                for i in range(len(bon_lines) - 1, -1, -1):
+                    if 'Totaal' in bon_lines[i] and ('€' in bon_lines[i] or '?' in bon_lines[i]):
+                        totaal_line = bon_lines[i]
+                        break
+                
+                if totaal_line:
+                    totaal_line = totaal_line.replace('\u20ac', '€').replace('\xe2\x82\xac', '€').replace('?', '€')
+                    win32print.WritePrinter(hprinter, b'\n')
+                    win32print.WritePrinter(hprinter, ESC + b'a' + b'\x01')  # Centreren
+                    win32print.WritePrinter(hprinter, ESC + b'E' + b'\x01')  # Bold aan
+                    win32print.WritePrinter(hprinter, GS + b'!' + b'\x11')  # Groot (dubbele hoogte + breedte)
+                    win32print.WritePrinter(hprinter, totaal_line.encode('cp858', errors='replace'))
+                    win32print.WritePrinter(hprinter, b'\n')
+                    win32print.WritePrinter(hprinter, GS + b'!' + b'\x00')  # Normale grootte
+                    win32print.WritePrinter(hprinter, ESC + b'E' + b'\x00')  # Bold uit
+                    win32print.WritePrinter(hprinter, ESC + b'a' + b'\x00')  # Links uitlijnen
+                
+                # ============ 10. OPMERKING (indien aanwezig) ============
+                if klant_data:
+                    klant_opm = (klant_data.get("opmerking") or "").strip()
+                    if klant_opm:
+                        win32print.WritePrinter(hprinter, b'\n')
+                        win32print.WritePrinter(hprinter, ESC + b'a' + b'\x00')  # Links
+                        win32print.WritePrinter(hprinter, ESC + b'E' + b'\x01')  # Vet aan
+                        win32print.WritePrinter(hprinter, GS + b'!' + b'\x01')  # Dubbele hoogte aan
+                        opmerking_text = f"Opmerking:\n{klant_opm}"
+                        win32print.WritePrinter(hprinter, opmerking_text.encode('cp858', errors='replace'))
+                        win32print.WritePrinter(hprinter, b'\n')
+                        win32print.WritePrinter(hprinter, GS + b'!' + b'\x00')  # Reset grootte
+                        win32print.WritePrinter(hprinter, ESC + b'E' + b'\x00')  # Vet uit
+                        win32print.WritePrinter(hprinter, ESC + b'a' + b'\x00')  # Links uitlijnen
+                
+                # ============ 11. FOOTER ============
+                footer = """
+
+"""
+                win32print.WritePrinter(hprinter, ESC + b'a' + b'\x01')  # Centreren
+                win32print.WritePrinter(hprinter, footer.encode('cp437', errors='replace'))
+                
+                # TE BETALEN! (groot/vet) + exact 1 lege lijn erna
+                win32print.WritePrinter(hprinter, ESC + b'a' + b'\x01')  # Centreren
+                win32print.WritePrinter(hprinter, ESC + b'E' + b'\x01')  # Bold aan
+                win32print.WritePrinter(hprinter, GS + b'!' + b'\x01')  # Dubbele hoogte
+                win32print.WritePrinter(hprinter, b'TE BETALEN!\n')
+                # Reset grootte/vet, blijven gecentreerd
+                win32print.WritePrinter(hprinter, GS + b'!' + b'\x00')  # Normale grootte
+                win32print.WritePrinter(hprinter, ESC + b'E' + b'\x00')  # Bold uit
+                # Precies één lege lijn na "TE BETALEN!"
+                win32print.WritePrinter(hprinter, b'\n')
+                # Centraal "Eet smakelijk"
+                win32print.WritePrinter(hprinter, ESC + b'E' + b'\x01')  # Bold aan
+                win32print.WritePrinter(hprinter, b'Eet smakelijk\n')
+                win32print.WritePrinter(hprinter, ESC + b'E' + b'\x00')  # Bold uit
+                # Openingsuren
+                win32print.WritePrinter(hprinter, b'Van Dins- tot Zon\n vanaf 17 u Tot 20u30\n')
+                # Reset uitlijning
+                win32print.WritePrinter(hprinter, ESC + b'a' + b'\x00')  # Links uitlijnen
+                
+                # ============ 12. QR CODE (indien aanwezig) ============
+                if address_for_qr:
+                    win32print.WritePrinter(hprinter, b'\n')
+                    win32print.WritePrinter(hprinter, ESC + b'a' + b'\x01')  # Centreren
+                    win32print.WritePrinter(hprinter, GS + b'(' + b'k' + b'\x04\x00' + b'1A2\x00')
+                    win32print.WritePrinter(hprinter, GS + b'(' + b'k' + b'\x03\x00' + b'1C\x06')
+                    win32print.WritePrinter(hprinter, GS + b'(' + b'k' + b'\x03\x00' + b'1E0')
+                    qr_data = address_for_qr.encode('utf-8')
+                    qr_len = len(qr_data) + 3
+                    win32print.WritePrinter(hprinter, GS + b'(' + b'k' + qr_len.to_bytes(2, 'little') + b'1P0' + qr_data)
+                    win32print.WritePrinter(hprinter, GS + b'(' + b'k' + b'\x03\x00' + b'1Q0')
+                    win32print.WritePrinter(hprinter, b'\n')
+                    win32print.WritePrinter(hprinter, ESC + b'a' + b'\x00')  # Links uitlijnen
+                
+                # ============ 13. AFSNIJDEN ============
+                win32print.WritePrinter(hprinter, b'\n\n\n')
+                win32print.WritePrinter(hprinter, GS + b'V' + b'\x00')  # Snij papier
                 
                 win32print.EndPagePrinter(hprinter)
                 win32print.EndDocPrinter(hprinter)
