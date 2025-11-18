@@ -120,7 +120,7 @@ class HistoryService:
                 
                 # Get order items
                 cursor.execute("""
-                    SELECT categorie, product, aantal, prijs, extras, opmerking
+                    SELECT categorie, product, aantal, prijs, extras
                     FROM bestelregels
                     WHERE bestelling_id = ?
                     ORDER BY id

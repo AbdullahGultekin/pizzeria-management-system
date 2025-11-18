@@ -120,7 +120,19 @@ def _save_and_print_from_preview(
         finally:
             win32print.ClosePrinter(hprinter)
     except Exception as e:
-        messagebox.showerror("Fout bij afdrukken", f"Kon de bon niet afdrukken.\n\nFoutdetails: {e}")
+        error_msg = str(e)
+        if "Ongeldige printernaam" in error_msg or "Invalid printer name" in error_msg or "1801" in error_msg:
+            messagebox.showerror(
+                "Fout bij afdrukken",
+                f"De printer '{printer_name}' kon niet worden gevonden.\n\n"
+                f"Controleer:\n"
+                f"1. Of de printer is aangesloten en ingeschakeld\n"
+                f"2. Of de printer naam correct is in Instellingen > Printer Instellingen\n"
+                f"3. Of de printer beschikbaar is in Windows Printer Instellingen\n\n"
+                f"Foutdetails: {error_msg}"
+            )
+        else:
+            messagebox.showerror("Fout bij afdrukken", f"Kon de bon niet afdrukken.\n\nFoutdetails: {error_msg}")
 
 
 def find_printer_usb_ids() -> None:

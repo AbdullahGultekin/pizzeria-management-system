@@ -336,7 +336,7 @@ class HistoryManager:
                     'aantal': item['aantal'],
                     'prijs': item['prijs'],
                     'extras': json.loads(item['extras']) if item.get('extras') else {},
-                    'opmerking': item.get('opmerking', '')
+                    'opmerking': ''  # opmerking is not stored in bestelregels table
                 })
             
             # Load in main screen
