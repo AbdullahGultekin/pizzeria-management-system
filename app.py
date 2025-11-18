@@ -1234,7 +1234,7 @@ Navigatie:
             self.menubar.add_cascade(label="Instellingen", menu=settings_menu)
             settings_menu.add_command(label="Webex Configuratie", command=self._configure_webex)
             settings_menu.add_separator()
-            settings_menu.add_command(label="Printer Instellingen", command=lambda: open_printer_settings(self.root))
+            settings_menu.add_command(label="Printer Instellingen", command=lambda: open_printer_settings(self.root, self.app_settings))
         
         help_menu = tk.Menu(self.menubar, tearoff=0)
         self.menubar.add_cascade(label="Help", menu=help_menu)
