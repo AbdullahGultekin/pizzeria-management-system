@@ -35,6 +35,7 @@ hiddenimports = [
     'win32print',
     'win32api',
     'win32con',
+    'win32clipboard',  # For clipboard monitoring
     'tkinter',
     'tkinter.ttk',
     'tkinter.messagebox',

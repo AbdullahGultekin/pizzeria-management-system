@@ -304,6 +304,15 @@ class EnhancedCustomerForm:
             "<KeyRelease>",
             lambda e: self._on_phone_change()
         )
+        # Auto-normalize phone number on paste (Ctrl+V)
+        self.telefoon_entry.bind(
+            "<Control-v>",
+            lambda e: self._handle_paste_phone(e)
+        )
+        self.telefoon_entry.bind(
+            "<Command-v>",
+            lambda e: self._handle_paste_phone(e)
+        )
     
     def _create_address_section(self) -> None:
         """Create address section (street, number, postcode) - all on one line."""
@@ -496,7 +505,88 @@ class EnhancedCustomerForm:
         """Handle phone number change - clear status."""
         if self.status_label:
             self.status_label.config(text="", bg=self.COLORS['bg_primary'])
-        self.customer_found = False
+    
+    def _handle_paste_phone(self, event: Optional[tk.Event] = None) -> Optional[str]:
+        """Handle paste in phone field - normalize phone number."""
+        try:
+            # Get clipboard content
+            clipboard_text = self.root_window.clipboard_get()
+            
+            if clipboard_text:
+                # Normalize phone number
+                phone_number = self._normalize_phone_from_text(clipboard_text)
+                
+                if phone_number:
+                    # Clear field and insert normalized number
+                    self.telefoon_entry.delete(0, tk.END)
+                    self.telefoon_entry.insert(0, phone_number)
+                    # Auto-fill customer data
+                    self._auto_fill_customer()
+                    
+                    # Visual feedback
+                    if self.status_label:
+                        self.status_label.config(
+                            text="📋 Telefoonnummer geplakt",
+                            bg=self.COLORS['bg_info'],
+                            fg=self.COLORS['text_primary']
+                        )
+                        self.root_window.after(2000, lambda: self.status_label.config(
+                            text="",
+                            bg=self.COLORS['bg_primary']
+                        ) if self.status_label else None)
+                    
+                    return "break"  # Prevent default paste
+        except tk.TclError:
+            # Clipboard might be empty or not text
+            pass
+        except Exception as e:
+            from logging_config import get_logger
+            logger = get_logger("pizzeria.ui.customer_form")
+            logger.exception(f"Error handling paste phone: {e}")
+        
+        return None
+    
+    def _normalize_phone_from_text(self, text: str) -> Optional[str]:
+        """
+        Extract and normalize phone number from text.
+        
+        Args:
+            text: Text to extract phone number from
+            
+        Returns:
+            Normalized phone number or None if not found
+        """
+        if not text or not text.strip():
+            return None
+        
+        import re
+        
+        # Remove common formatting
+        text = text.strip()
+        
+        # Try to extract phone number patterns
+        # Belgian phone numbers: 0X XXX XX XX or +32 X XXX XX XX
+        patterns = [
+            r'(\+32|0032|32)?\s?([1-9]\d{8})',  # +32 1 234 56 78 or 0123456789
+            r'0([1-9]\d{8})',  # 0123456789
+            r'(\d{10})',  # 10 digits
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, text.replace(' ', '').replace('-', '').replace('(', '').replace(')', ''))
+            if match:
+                phone = match.group(0)
+                # Remove country code if present
+                if phone.startswith('+32') or phone.startswith('0032'):
+                    phone = '0' + phone[3:] if phone.startswith('+32') else '0' + phone[4:]
+                elif phone.startswith('32') and len(phone) == 10:
+                    phone = '0' + phone[2:]
+                
+                # Validate: should be 10 digits starting with 0
+                if phone.startswith('0') and len(phone) == 10 and phone[1:].isdigit():
+                    return phone
+        
+        return None
     
     def _on_address_key_release(self, event: tk.Event) -> None:
         """Handle address entry key release - show suggestions."""
@@ -829,9 +919,19 @@ class EnhancedCustomerForm:
         if not self.telefoon_entry:
             return
         
+        # Validate phone number
+        if not phone_number or not phone_number.strip():
+            return
+        
         # Clear and set phone number
-        self.telefoon_entry.delete(0, tk.END)
-        self.telefoon_entry.insert(0, phone_number)
+        try:
+            self.telefoon_entry.delete(0, tk.END)
+            self.telefoon_entry.insert(0, phone_number.strip())
+        except Exception as e:
+            from logging_config import get_logger
+            logger = get_logger("pizzeria.ui.customer_form")
+            logger.exception(f"Error setting phone number in entry: {e}")
+            return
         
         # Auto-fill customer data if requested
         if auto_fill:

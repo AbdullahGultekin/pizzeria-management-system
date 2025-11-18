@@ -39,7 +39,7 @@ if errorlevel 1 (
 echo.
 
 echo [4/4] Building executable...
-pyinstaller pizzeria.spec
+pyinstaller pizzeria.spec --clean
 if errorlevel 1 (
     echo ERROR: Build failed
     pause

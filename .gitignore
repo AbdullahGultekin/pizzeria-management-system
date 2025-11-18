@@ -49,6 +49,8 @@ Thumbs.db
 # PyInstaller
 *.spec
 !pizzeria.spec
+*.exe
+PizzeriaBestelformulier.exe
 
 # Settings (may contain sensitive data)
 settings.json

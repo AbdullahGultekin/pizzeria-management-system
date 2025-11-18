@@ -56,7 +56,6 @@ from ui.product_options_dialog import ProductOptionsDialog
 from ui.mode_selector import ModeSelector
 from business.customer_handler import CustomerHandler
 from business.order_processor import OrderProcessor
-from services.webex_service import WebexCallMonitor
 
 # Setup logging
 setup_logging()
@@ -122,15 +121,16 @@ class PizzeriaApp:
         self.customer_handler = CustomerHandler()
         self.order_processor = OrderProcessor()
         
-        # Webex integration (optional)
-        self.webex_monitor: Optional[WebexCallMonitor] = None
+        # Clipboard monitor (primary method for phone number input)
+        self.clipboard_monitor: Optional[Any] = None
         if self.mode == "front":
             try:
-                self.webex_monitor = WebexCallMonitor()
-                logger.info("Webex call monitor initialized")
+                from services.clipboard_monitor import ClipboardMonitor
+                self.clipboard_monitor = ClipboardMonitor()
+                logger.info("Clipboard monitor initialized")
             except Exception as e:
-                logger.warning(f"Could not initialize Webex monitor: {e}")
-                self.webex_monitor = None
+                logger.warning(f"Could not initialize clipboard monitor: {e}")
+                self.clipboard_monitor = None
         
         # Order state
         self.bestelregels: List[Dict[str, Any]] = []
@@ -450,6 +450,75 @@ Navigatie:
                 return "break"
         except Exception:
             pass
+        
+        return None
+    
+    def _handle_paste_phone(self, event: Optional[tk.Event] = None) -> Optional[str]:
+        """Handle Ctrl+Shift+V - paste and normalize phone number from clipboard."""
+        try:
+            # Get clipboard content
+            clipboard_text = self.root.clipboard_get()
+            
+            if clipboard_text:
+                # Normalize phone number
+                phone_number = self._normalize_phone_from_text(clipboard_text)
+                
+                if phone_number and hasattr(self, 'enhanced_customer_form') and self.enhanced_customer_form:
+                    if self.enhanced_customer_form.telefoon_entry:
+                        # Clear and set phone number
+                        self.enhanced_customer_form.telefoon_entry.delete(0, tk.END)
+                        self.enhanced_customer_form.telefoon_entry.insert(0, phone_number)
+                        # Auto-fill customer data
+                        self.enhanced_customer_form._auto_fill_customer()
+                        logger.info(f"Phone number pasted from clipboard: {phone_number}")
+                        return "break"
+        except tk.TclError:
+            # Clipboard might be empty or not text
+            pass
+        except Exception as e:
+            logger.exception(f"Error handling paste phone: {e}")
+        
+        return None
+    
+    def _normalize_phone_from_text(self, text: str) -> Optional[str]:
+        """
+        Extract and normalize phone number from text.
+        
+        Args:
+            text: Text to extract phone number from
+            
+        Returns:
+            Normalized phone number or None if not found
+        """
+        if not text or not text.strip():
+            return None
+        
+        import re
+        
+        # Remove common formatting
+        text = text.strip()
+        
+        # Try to extract phone number patterns
+        # Belgian phone numbers: 0X XXX XX XX or +32 X XXX XX XX
+        patterns = [
+            r'(\+32|0032|32)?\s?([1-9]\d{8})',  # +32 1 234 56 78 or 0123456789
+            r'0([1-9]\d{8})',  # 0123456789
+            r'(\d{10})',  # 10 digits
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, text.replace(' ', '').replace('-', '').replace('(', '').replace(')', ''))
+            if match:
+                phone = match.group(0)
+                # Remove country code if present
+                if phone.startswith('+32') or phone.startswith('0032'):
+                    phone = '0' + phone[3:] if phone.startswith('+32') else '0' + phone[4:]
+                elif phone.startswith('32') and len(phone) == 10:
+                    phone = '0' + phone[2:]
+                
+                # Validate: should be 10 digits starting with 0
+                if phone.startswith('0') and len(phone) == 10 and phone[1:].isdigit():
+                    return phone
         
         return None
     
@@ -1429,6 +1498,21 @@ info@pitapizzanapoli.be
         self.root = tk.Tk()
         self._initialize_app_variables()
         
+        # Setup cleanup handler for when window is closed
+        def on_closing():
+            """Cleanup when application closes."""
+            try:
+                # Stop clipboard monitoring
+                if self.clipboard_monitor:
+                    self.clipboard_monitor.stop_monitoring()
+                logger.info("Application cleanup completed")
+            except Exception as e:
+                logger.exception(f"Error during cleanup: {e}")
+            finally:
+                self.root.destroy()
+        
+        self.root.protocol("WM_DELETE_WINDOW", on_closing)
+        
         # Set window title based on mode
         mode_label = "Kassa" if self.mode == "front" else "Admin"
         self.root.title(f"Pizzeria Bestelformulier - {mode_label} Modus")
@@ -1450,8 +1534,8 @@ info@pitapizzanapoli.be
             self.setup_customer_form()
             self.setup_menu_interface()
             
-            # Start Webex monitoring if configured
-            self._setup_webex_monitoring()
+            # Start clipboard monitoring (primary method for phone number input)
+            self._setup_clipboard_monitoring()
             
             # Load initial category
             categories = load_menu_categories()
@@ -1467,8 +1551,6 @@ info@pitapizzanapoli.be
         if self.mode == "front":
             settings_menu = tk.Menu(self.menubar, tearoff=0)
             self.menubar.add_cascade(label="Instellingen", menu=settings_menu)
-            settings_menu.add_command(label="Webex Configuratie", command=self._configure_webex)
-            settings_menu.add_separator()
             settings_menu.add_command(label="Printer Instellingen", command=lambda: open_printer_settings(self.root, self.app_settings))
             settings_menu.add_command(label="Bon Footer Instellingen", command=lambda: open_footer_settings(self.root, self.app_settings))
         
@@ -1520,6 +1602,10 @@ info@pitapizzanapoli.be
             # Delete to remove selected item
             self.root.bind("<Delete>", self._handle_delete)
             self.root.bind("<BackSpace>", self._handle_delete)
+            
+            # Clipboard paste hotkey for phone number (Ctrl+Shift+V or Ctrl+V in phone field)
+            self.root.bind("<Control-Shift-v>", self._handle_paste_phone)
+            self.root.bind("<Command-Shift-v>", self._handle_paste_phone)
     
     def setup_tabs(self) -> None:
         """Setup the tab interface."""
@@ -1926,292 +2012,66 @@ info@pitapizzanapoli.be
         self.overzicht.config(cursor="arrow")
         self.update_overzicht()
     
-    def _setup_webex_monitoring(self) -> None:
-        """Setup and start Webex call monitoring."""
-        if not self.webex_monitor:
+    def _setup_clipboard_monitoring(self) -> None:
+        """Setup and start clipboard monitoring for phone numbers."""
+        if not self.clipboard_monitor:
             return
         
-        # Check if Webex is configured
-        if not self.webex_monitor.is_configured():
-            logger.info("Webex not configured, skipping monitoring")
+        # Check if clipboard monitoring is available
+        if not self.clipboard_monitor.is_available():
+            logger.info("Clipboard monitoring not available (pywin32 not installed)")
             return
         
-        # Define callback for incoming calls
-        def on_incoming_call(phone_number: str, caller_name: Optional[str] = None) -> None:
-            """Handle incoming call - fill phone number in form."""
+        # Define callback for detected phone numbers
+        def on_phone_detected(phone_number: str) -> None:
+            """Handle phone number detected in clipboard - fill in form."""
             if not hasattr(self, 'enhanced_customer_form') or not self.enhanced_customer_form:
                 return
             
             # Use root.after to ensure thread-safe UI update
-            self.root.after(0, lambda: self._handle_incoming_call(phone_number, caller_name))
+            self.root.after(0, lambda: self._handle_clipboard_phone(phone_number))
         
         # Start monitoring
-        if self.webex_monitor.start_monitoring(on_incoming_call):
-            logger.info("Webex call monitoring started")
+        if self.clipboard_monitor.start_monitoring(on_phone_detected):
+            logger.info("Clipboard monitoring started")
         else:
-            logger.warning("Failed to start Webex call monitoring")
+            logger.warning("Failed to start clipboard monitoring")
     
-    def _handle_incoming_call(self, phone_number: str, caller_name: Optional[str] = None) -> None:
+    def _handle_clipboard_phone(self, phone_number: str) -> None:
         """
-        Handle incoming call notification (called from main thread).
+        Handle phone number detected from clipboard.
         
         Args:
-            phone_number: Incoming phone number
-            caller_name: Optional caller name
+            phone_number: Phone number detected in clipboard
         """
         if not hasattr(self, 'enhanced_customer_form') or not self.enhanced_customer_form:
             return
         
-        # Set phone number in form
-        self.enhanced_customer_form.set_phone_number(phone_number, auto_fill=True)
+        # Only fill if phone field is empty or different
+        current_phone = self.enhanced_customer_form.telefoon_entry.get().strip() if self.enhanced_customer_form.telefoon_entry else ""
         
-        # Show notification
-        if caller_name:
-            messagebox.showinfo(
-                "Inkomend Gesprek",
-                f"Telefoonnummer automatisch ingevuld:\n{phone_number}\n\nNaam: {caller_name}",
-                parent=self.root
-            )
-        else:
-            messagebox.showinfo(
-                "Inkomend Gesprek",
-                f"Telefoonnummer automatisch ingevuld:\n{phone_number}",
-                parent=self.root
-            )
-    
-    def _configure_webex(self) -> None:
-        """Open Webex configuration dialog."""
-        if not self.webex_monitor:
-            messagebox.showerror(
-                "Fout",
-                "Webex monitor niet beschikbaar.",
-                parent=self.root
-            )
-            return
-        
-        # Create configuration dialog
-        dialog = tk.Toplevel(self.root)
-        dialog.title("Webex Configuratie")
-        dialog.transient(self.root)
-        dialog.grab_set()
-        dialog.geometry("500x400")
-        dialog.resizable(False, False)
-        
-        main_frame = tk.Frame(dialog, padx=20, pady=20)
-        main_frame.pack(fill=tk.BOTH, expand=True)
-        
-        # Title
-        tk.Label(
-            main_frame,
-            text="📞 Webex Telefoon Integratie",
-            font=("Arial", 14, "bold")
-        ).pack(pady=(0, 20))
-        
-        # Instructions
-        instructions = (
-            "Configureer Webex API credentials om automatisch telefoonnummers\n"
-            "in te vullen bij inkomende gesprekken.\n\n"
-            "1. Maak een Webex app aan op developer.webex.com\n"
-            "2. Kopieer Client ID en Client Secret\n"
-            "3. Volg de OAuth flow om toegang te krijgen"
-        )
-        tk.Label(
-            main_frame,
-            text=instructions,
-            font=("Arial", 9),
-            justify=tk.LEFT
-        ).pack(pady=(0, 20))
-        
-        # Client ID
-        tk.Label(main_frame, text="Client ID:", font=("Arial", 10, "bold")).pack(anchor=tk.W, pady=(10, 5))
-        client_id_entry = tk.Entry(main_frame, width=50, font=("Arial", 10))
-        client_id_entry.pack(fill=tk.X, pady=(0, 10))
-        if self.webex_monitor.client_id:
-            client_id_entry.insert(0, self.webex_monitor.client_id)
-        
-        # Client Secret
-        tk.Label(main_frame, text="Client Secret:", font=("Arial", 10, "bold")).pack(anchor=tk.W, pady=(10, 5))
-        client_secret_entry = tk.Entry(main_frame, width=50, font=("Arial", 10), show="*")
-        client_secret_entry.pack(fill=tk.X, pady=(0, 10))
-        if self.webex_monitor.client_secret:
-            client_secret_entry.insert(0, self.webex_monitor.client_secret)
-        
-        # Status
-        status_label = tk.Label(
-            main_frame,
-            text="",
-            font=("Arial", 9),
-            fg="gray"
-        )
-        status_label.pack(pady=(10, 0))
-        
-        def check_status() -> None:
-            """Check and display Webex configuration status."""
-            if self.webex_monitor.is_configured():
-                status_label.config(
-                    text="✅ Webex is geconfigureerd en actief",
-                    fg="green"
-                )
-            else:
-                status_label.config(
-                    text="⚠️ Webex is niet geconfigureerd",
-                    fg="orange"
-                )
-        
-        check_status()
-        
-        # Buttons frame
-        buttons_frame = tk.Frame(main_frame)
-        buttons_frame.pack(fill=tk.X, pady=(20, 0))
-        
-        def save_credentials() -> None:
-            """Save Webex credentials."""
-            client_id = client_id_entry.get().strip()
-            client_secret = client_secret_entry.get().strip()
-            
-            if not client_id or not client_secret:
-                messagebox.showerror(
-                    "Fout",
-                    "Vul beide velden in.",
-                    parent=dialog
-                )
-                return
-            
-            self.webex_monitor.set_credentials(client_id, client_secret)
-            messagebox.showinfo(
-                "Opgeslagen",
-                "Credentials opgeslagen.\n\nVolgende stap: OAuth autorisatie.",
-                parent=dialog
-            )
-            check_status()
-        
-        def open_oauth() -> None:
-            """Open OAuth authorization URL."""
-            if not self.webex_monitor.client_id:
-                messagebox.showerror(
-                    "Fout",
-                    "Sla eerst Client ID en Secret op.",
-                    parent=dialog
-                )
-                return
-            
-            import webbrowser
-            auth_url = self.webex_monitor.get_auth_url()
-            webbrowser.open(auth_url)
-            
-            # Show instructions for callback
-            messagebox.showinfo(
-                "OAuth Flow",
-                (
-                    "Autorisatie pagina geopend in browser.\n\n"
-                    "Na autorisatie krijg je een code.\n"
-                    "Gebruik de 'Test OAuth' knop om de code in te voeren."
-                ),
-                parent=dialog
-            )
-        
-        def test_oauth() -> None:
-            """Test OAuth by entering authorization code."""
-            code = simpledialog.askstring(
-                "OAuth Code",
-                "Voer de authorization code in:",
-                parent=dialog
-            )
-            
-            if not code:
-                return
-            
-            # Exchange code for token
+        # Only auto-fill if field is empty or user is actively using clipboard
+        if not current_phone or current_phone == phone_number:
             try:
-                import requests
-                response = requests.post(
-                    "https://webexapis.com/v1/access_token",
-                    data={
-                        "grant_type": "authorization_code",
-                        "client_id": self.webex_monitor.client_id,
-                        "client_secret": self.webex_monitor.client_secret,
-                        "code": code,
-                        "redirect_uri": "http://localhost:5000/callback"
-                    },
-                    timeout=10
-                )
+                self.enhanced_customer_form.set_phone_number(phone_number, auto_fill=True)
+                logger.info(f"Phone number from clipboard filled: {phone_number}")
                 
-                if response.status_code == 200:
-                    data = response.json()
-                    self.webex_monitor.set_access_token(
-                        data.get("access_token"),
-                        data.get("refresh_token"),
-                        data.get("expires_in", 3600)
-                    )
-                    messagebox.showinfo(
-                        "Succes",
-                        "OAuth autorisatie gelukt!\n\nWebex monitoring wordt nu gestart.",
-                        parent=dialog
-                    )
-                    
-                    # Restart monitoring
-                    if self.webex_monitor.monitoring:
-                        self.webex_monitor.stop_monitoring()
-                    self._setup_webex_monitoring()
-                    
-                    check_status()
-                else:
-                    messagebox.showerror(
-                        "Fout",
-                        f"OAuth fout: {response.status_code}\n{response.text}",
-                        parent=dialog
-                    )
+                # Show brief notification
+                if hasattr(self, 'root') and self.root:
+                    # Visual feedback in status label
+                    if hasattr(self.enhanced_customer_form, 'status_label') and self.enhanced_customer_form.status_label:
+                        self.enhanced_customer_form.status_label.config(
+                            text="📋 Telefoonnummer gekopieerd",
+                            bg=self.enhanced_customer_form.COLORS.get('bg_info', '#E3F2FD'),
+                            fg=self.enhanced_customer_form.COLORS.get('text_primary', '#000000')
+                        )
+                        # Clear status after 2 seconds
+                        self.root.after(2000, lambda: self.enhanced_customer_form.status_label.config(
+                            text="",
+                            bg=self.enhanced_customer_form.COLORS.get('bg_primary', '#FFFFFF')
+                        ) if hasattr(self.enhanced_customer_form, 'status_label') and self.enhanced_customer_form.status_label else None)
             except Exception as e:
-                messagebox.showerror(
-                    "Fout",
-                    f"Fout bij OAuth: {e}",
-                    parent=dialog
-                )
-        
-        # Buttons
-        tk.Button(
-            buttons_frame,
-            text="Opslaan",
-            command=save_credentials,
-            bg="#4CAF50",
-            fg="white",
-            font=("Arial", 10, "bold"),
-            padx=15,
-            pady=5
-        ).pack(side=tk.LEFT, padx=(0, 10))
-        
-        tk.Button(
-            buttons_frame,
-            text="OAuth Autoriseer",
-            command=open_oauth,
-            bg="#2196F3",
-            fg="white",
-            font=("Arial", 10, "bold"),
-            padx=15,
-            pady=5
-        ).pack(side=tk.LEFT, padx=(0, 10))
-        
-        tk.Button(
-            buttons_frame,
-            text="Test OAuth",
-            command=test_oauth,
-            bg="#FF9800",
-            fg="white",
-            font=("Arial", 10, "bold"),
-            padx=15,
-            pady=5
-        ).pack(side=tk.LEFT, padx=(0, 10))
-        
-        tk.Button(
-            buttons_frame,
-            text="Sluiten",
-            command=dialog.destroy,
-            bg="#6C757D",
-            fg="white",
-            font=("Arial", 10),
-            padx=15,
-            pady=5
-        ).pack(side=tk.RIGHT)
+                logger.exception(f"Error handling clipboard phone number: {e}")
     
     def run(self) -> None:
         """Start the application main loop."""
