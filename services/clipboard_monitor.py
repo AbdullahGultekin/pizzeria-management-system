@@ -34,7 +34,7 @@ class ClipboardMonitor:
         """Initialize clipboard monitor."""
         self.monitoring: bool = False
         self.monitor_thread: Optional[threading.Thread] = None
-        self.poll_interval: float = 0.5  # Check every 0.5 seconds
+        self.poll_interval: float = 1.0  # Check every 1.0 seconds (reduced from 0.5 for better performance)
         self.on_phone_detected: Optional[Callable[[str], None]] = None
         self.last_clipboard_content: str = ""
         self.last_phone_number: str = ""

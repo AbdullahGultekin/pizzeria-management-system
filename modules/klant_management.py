@@ -3,6 +3,7 @@ from tkinter import ttk, messagebox, simpledialog
 import json
 import datetime
 import database
+from database import DatabaseContext
 
 
 def open_klant_management(root):
@@ -89,70 +90,84 @@ def open_klant_management(root):
     selected_klant = {'data': None}
 
     # --- ZOEKFUNCTIONALITEIT ---
+    search_timeout_id = None
+    
     def zoek_klanten(*args):
-        """Zoekt klanten op basis van zoekterm"""
-        zoekterm = search_var.get().strip()
+        """Zoekt klanten op basis van zoekterm (with debouncing)"""
+        nonlocal search_timeout_id
+        
+        # Cancel previous timeout
+        if search_timeout_id:
+            root.after_cancel(search_timeout_id)
+        
+        # Schedule new search after 300ms delay (debouncing)
+        def do_search():
+            zoekterm = search_var.get().strip()
 
-        # Clear tree
-        klanten_tree.delete(*klanten_tree.get_children())
+            # Clear tree
+            klanten_tree.delete(*klanten_tree.get_children())
 
-        conn = database.get_db_connection()
-        cursor = conn.cursor()
+            try:
+                with DatabaseContext() as conn:
+                    cursor = conn.cursor()
 
-        if zoekterm:
-            # Zoek op telefoon, naam, adres
-            cursor.execute("""
-                           SELECT id,
-                                  telefoon,
-                                  naam,
-                                  straat,
-                                  huisnummer,
-                                  plaats,
-                                  laatste_bestelling,
-                                  totaal_bestellingen,
-                                  totaal_besteed
-                           FROM klanten
-                           WHERE telefoon LIKE ?
-                              OR naam LIKE ?
-                              OR straat LIKE ?
-                           ORDER BY totaal_bestellingen DESC, laatste_bestelling DESC
-                           """, (f"%{zoekterm}%", f"%{zoekterm}%", f"%{zoekterm}%"))
-        else:
-            # Toon alle klanten, gesorteerd op activiteit
-            cursor.execute("""
-                           SELECT id,
-                                  telefoon,
-                                  naam,
-                                  straat,
-                                  huisnummer,
-                                  plaats,
-                                  laatste_bestelling,
-                                  totaal_bestellingen,
-                                  totaal_besteed
-                           FROM klanten
-                           ORDER BY totaal_bestellingen DESC, laatste_bestelling DESC LIMIT 100
-                           """)
+                    if zoekterm:
+                        # Zoek op telefoon, naam, adres
+                        cursor.execute("""
+                                       SELECT id,
+                                              telefoon,
+                                              naam,
+                                              straat,
+                                              huisnummer,
+                                              plaats,
+                                              laatste_bestelling,
+                                              totaal_bestellingen,
+                                              totaal_besteed
+                                       FROM klanten
+                                       WHERE telefoon LIKE ?
+                                          OR naam LIKE ?
+                                          OR straat LIKE ?
+                                       ORDER BY totaal_bestellingen DESC, laatste_bestelling DESC
+                                       """, (f"%{zoekterm}%", f"%{zoekterm}%", f"%{zoekterm}%"))
+                    else:
+                        # Toon alle klanten, gesorteerd op activiteit
+                        cursor.execute("""
+                                       SELECT id,
+                                              telefoon,
+                                              naam,
+                                              straat,
+                                              huisnummer,
+                                              plaats,
+                                              laatste_bestelling,
+                                              totaal_bestellingen,
+                                              totaal_besteed
+                                       FROM klanten
+                                       ORDER BY totaal_bestellingen DESC, laatste_bestelling DESC LIMIT 100
+                                       """)
 
-        for klant in cursor.fetchall():
-            adres = f"{klant['straat'] or ''} {klant['huisnummer'] or ''}".strip()
-            laatste_bestelling = klant['laatste_bestelling'] or 'Nooit'
-            if laatste_bestelling != 'Nooit' and ' ' in laatste_bestelling:
-                # Format datum
-                try:
-                    datum_deel = laatste_bestelling.split(' ')[0]
-                    laatste_bestelling = datetime.datetime.strptime(datum_deel, '%Y-%m-%d').strftime('%d/%m/%Y')
-                except:
-                    pass
+                    for klant in cursor.fetchall():
+                        adres = f"{klant['straat'] or ''} {klant['huisnummer'] or ''}".strip()
+                        laatste_bestelling = klant['laatste_bestelling'] or 'Nooit'
+                        if laatste_bestelling != 'Nooit' and ' ' in laatste_bestelling:
+                            # Format datum
+                            try:
+                                datum_deel = laatste_bestelling.split(' ')[0]
+                                laatste_bestelling = datetime.datetime.strptime(datum_deel, '%Y-%m-%d').strftime('%d/%m/%Y')
+                            except:
+                                pass
 
-            klanten_tree.insert("", tk.END, iid=klant['id'], values=(
-                klant['telefoon'],
-                klant['naam'] or '',
-                adres,
-                laatste_bestelling,
-                klant['totaal_bestellingen'] or 0
-            ))
-
-        conn.close()
+                        klanten_tree.insert("", tk.END, iid=klant['id'], values=(
+                            klant['telefoon'],
+                            klant['naam'] or '',
+                            adres,
+                            laatste_bestelling,
+                            klant['totaal_bestellingen'] or 0
+                        ))
+            except Exception as e:
+                messagebox.showerror("Fout", f"Fout bij zoeken: {e}")
+        
+        # Schedule search with debouncing
+        search_timeout_id = root.after(300, do_search)
 
     def on_klant_select(event):
         """Handler voor klant selectie"""

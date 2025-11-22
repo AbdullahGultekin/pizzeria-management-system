@@ -269,7 +269,8 @@ class OnlineBestellingenManager:
                     "username": API_USERNAME,
                     "password": API_PASSWORD
                 },
-                headers={"Content-Type": "application/x-www-form-urlencoded"}
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                timeout=2  # Short timeout
             )
             if response.status_code == 200:
                 data = response.json()
@@ -282,17 +283,23 @@ class OnlineBestellingenManager:
                     return True
             else:
                 error_detail = response.text
-                logger.error(f"API authentication failed: {response.status_code} - {error_detail}")
+                logger.debug(f"API authentication failed: {response.status_code} - {error_detail}")
+            return False
+        except requests.exceptions.ConnectionError:
+            # Backend not available - silent fail
+            return False
+        except requests.exceptions.Timeout:
             return False
         except Exception as e:
-            logger.error(f"Error authenticating with API: {e}")
+            logger.debug(f"Error authenticating with API: {e}")
             return False
     
     def fetch_orders(self) -> List[Dict[str, Any]]:
         """Fetch pending online orders from API."""
         try:
             response = self.api_session.get(
-                f"{API_BASE_URL}/orders/online/pending"
+                f"{API_BASE_URL}/orders/online/pending",
+                timeout=2  # Short timeout to avoid hanging
             )
             if response.status_code == 200:
                 return response.json()
@@ -302,20 +309,26 @@ class OnlineBestellingenManager:
                 if self.authenticate_api():
                     # Retry the request
                     response = self.api_session.get(
-                        f"{API_BASE_URL}/orders/online/pending"
+                        f"{API_BASE_URL}/orders/online/pending",
+                        timeout=2
                     )
                     if response.status_code == 200:
                         return response.json()
-                logger.error("Re-authentication failed")
+                logger.debug("Re-authentication failed")
                 return []
             else:
-                logger.error(f"Failed to fetch orders: {response.status_code} - {response.text}")
+                logger.debug(f"Failed to fetch orders: {response.status_code} - {response.text}")
                 return []
-        except requests.exceptions.ConnectionError as e:
-            logger.error(f"Connection error - is backend running? {e}")
+        except requests.exceptions.ConnectionError:
+            # Backend not available - only log once per session
+            if not hasattr(self, '_api_connection_logged'):
+                logger.debug("Backend API not available (connection refused)")
+                self._api_connection_logged = True
             return []
+        except requests.exceptions.Timeout:
+            return []  # Silent timeout
         except Exception as e:
-            logger.error(f"Error fetching orders: {e}")
+            logger.debug(f"Error fetching orders: {e}")
             return []
     
     def refresh_orders(self) -> None:
@@ -392,11 +405,17 @@ class OnlineBestellingenManager:
                     # Update status
                     self.parent.after(0, lambda: self.update_status(f"{len(orders)} bestellingen"))
                     
-                except requests.exceptions.ConnectionError as e:
-                    logger.error(f"Connection error in polling loop: {e}")
+                except requests.exceptions.ConnectionError:
+                    # Backend not available - only log once per session
+                    if not hasattr(self, '_api_connection_logged'):
+                        logger.debug("Backend API not available in polling loop")
+                        self._api_connection_logged = True
                     self.parent.after(0, lambda: self.update_status("❌ Geen verbinding met backend"))
+                except requests.exceptions.Timeout:
+                    # Timeout - silent fail
+                    pass
                 except Exception as e:
-                    logger.error(f"Error in polling loop: {e}")
+                    logger.debug(f"Error in polling loop: {e}")
                     self.parent.after(0, lambda: self.update_status(f"Fout: {str(e)[:30]}"))
                 
                 time.sleep(self.poll_interval)
@@ -1639,7 +1658,7 @@ class OnlineBestellingenManager:
                         error_detail = error_text or str(response.status_code)
                     messagebox.showerror("Fout", f"Kon levertijd niet instellen: {error_detail}")
             except requests.exceptions.ConnectionError as e:
-                logger.error(f"Connection error setting levertijd: {e}")
+                logger.debug(f"Connection error setting levertijd: {e}")
                 messagebox.showerror("Fout", "Kan geen verbinding maken met backend. Is de server gestart?")
             except Exception as e:
                 logger.exception(f"Error setting levertijd: {e}")
@@ -1707,7 +1726,7 @@ class OnlineBestellingenManager:
                 logger.error(f"Failed to update status: {response.status_code} - {error_detail}")
                 messagebox.showerror("Fout", f"Kon status niet bijwerken: {error_detail}")
         except requests.exceptions.ConnectionError as e:
-            logger.error(f"Connection error: {e}")
+            logger.debug(f"Connection error: {e}")
             messagebox.showerror("Fout", "Kan geen verbinding maken met backend. Is de server gestart?")
         except Exception as e:
             logger.exception(f"Error updating order status: {e}")

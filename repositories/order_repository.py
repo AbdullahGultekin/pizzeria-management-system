@@ -43,17 +43,26 @@ class OrderRepository:
         """
         with DatabaseContext() as conn:
             cursor = conn.cursor()
-            # Check if afhaal column exists
-            cursor.execute("PRAGMA table_info(bestellingen)")
-            columns = [row[1] for row in cursor.fetchall()]
-            has_afhaal = 'afhaal' in columns
+            # Check if afhaal and status columns exist (cached check)
+            from modules.courier_service import CourierService
+            has_afhaal = CourierService._has_column("bestellingen", "afhaal")
+            has_status = CourierService._has_column("bestellingen", "status")
             
             if has_afhaal:
-                cursor.execute(
-                    "INSERT INTO bestellingen (klant_id, datum, tijd, totaal, opmerking, bonnummer, koerier_id, levertijd, afhaal) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (klant_id, datum, tijd, totaal, opmerking, bonnummer, koerier_id, levertijd, 1 if afhaal else 0)
-                )
+                if has_status:
+                    # Set status to "Nieuw" for pickup orders, NULL for delivery orders
+                    status_value = "Nieuw" if afhaal else None
+                    cursor.execute(
+                        "INSERT INTO bestellingen (klant_id, datum, tijd, totaal, opmerking, bonnummer, koerier_id, levertijd, afhaal, status) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        (klant_id, datum, tijd, totaal, opmerking, bonnummer, koerier_id, levertijd, 1 if afhaal else 0, status_value)
+                    )
+                else:
+                    cursor.execute(
+                        "INSERT INTO bestellingen (klant_id, datum, tijd, totaal, opmerking, bonnummer, koerier_id, levertijd, afhaal) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        (klant_id, datum, tijd, totaal, opmerking, bonnummer, koerier_id, levertijd, 1 if afhaal else 0)
+                    )
             else:
                 # Fallback for older databases
                 cursor.execute(

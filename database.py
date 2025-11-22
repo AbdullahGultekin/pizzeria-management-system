@@ -199,6 +199,9 @@ def create_tables():
         if 'afhaal' not in bcols:
             cursor.execute("ALTER TABLE bestellingen ADD COLUMN afhaal INTEGER DEFAULT 0")
             logger.info("Added afhaal column to bestellingen table")
+        if 'status' not in bcols:
+            cursor.execute("ALTER TABLE bestellingen ADD COLUMN status TEXT DEFAULT 'Nieuw'")
+            logger.info("Added status column to bestellingen table")
 
         # Bestelregels tabel
         cursor.execute('''

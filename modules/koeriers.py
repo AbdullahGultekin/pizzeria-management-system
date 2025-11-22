@@ -171,8 +171,13 @@ class CourierManager:
         # Setup table with new columns
         self.setup_table_new(left_panel)
         
-        # Setup settlement frame (right panel)
+        # Setup right panel structure
         self.right_frame = right_panel
+        
+        # Setup management frame first (for adding/removing couriers) - at the top
+        self.setup_management_frame()
+        
+        # Then setup settlement frame below management frame
         self.setup_settlement_frame()
         
         # Bottom section - Courier buttons
@@ -234,6 +239,29 @@ class CourierManager:
                 borderwidth=2
             )
             btn.pack(side=tk.LEFT, padx=3)
+    
+    def _refresh_courier_ui(self) -> None:
+        """Refresh only necessary UI parts after courier changes (faster than full rebuild)."""
+        # Update courier buttons
+        self.setup_courier_buttons()
+        
+        # Rebuild settlement frame with new courier variables
+        if hasattr(self, 'right_frame') and self.right_frame:
+            # Find and clear settlement frame (but keep management frame)
+            for widget in self.right_frame.winfo_children():
+                if isinstance(widget, tk.Frame) and widget != getattr(self, '_management_frame', None):
+                    # Check if it's the settlement container
+                    try:
+                        if widget.winfo_exists():
+                            widget.destroy()
+                    except tk.TclError:
+                        pass
+            
+            # Rebuild settlement frame
+            self.setup_settlement_frame()
+        
+        # Reload orders to refresh display
+        self.load_orders(force=True)
     
     def print_totals(self) -> None:
         """Print totals for all couriers."""
@@ -477,39 +505,51 @@ class CourierManager:
         """Setup courier management frame."""
         manage_frame = tk.LabelFrame(self.right_frame, text="Koeriers beheren", padx=8, pady=8)
         manage_frame.pack(fill=tk.X, pady=(8, 8))
+        self._management_frame = manage_frame  # Store reference for refresh
         
+        # Entry for new courier name
         self.new_koerier_entry = tk.Entry(manage_frame, font=("Arial", 10))
-        self.new_koerier_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.new_koerier_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 6))
         
+        # Button to add courier
         tk.Button(
             manage_frame,
             text="Toevoegen",
             command=self.add_courier,
-            bg="#D1FFD1"
-        ).pack(side=tk.LEFT, padx=6)
+            bg="#D1FFD1",
+            font=("Arial", 9)
+        ).pack(side=tk.LEFT, padx=3)
         
-        del_name_var = tk.StringVar(value=self.courier_names[0] if self.courier_names else "")
+        # Combobox for selecting courier to delete
+        self.del_name_var = tk.StringVar(value=self.courier_names[0] if self.courier_names else "")
         self.del_combo = ttk.Combobox(
             manage_frame,
             values=self.courier_names,
-            textvariable=del_name_var,
-            width=12,
-            state="readonly"
+            textvariable=self.del_name_var,
+            width=15,
+            state="readonly",
+            font=("Arial", 9)
         )
         self.del_combo.pack(side=tk.LEFT, padx=6)
         
+        # Button to delete courier
         tk.Button(
             manage_frame,
             text="Verwijderen",
-            command=lambda: self.delete_courier(del_name_var.get()),
-            bg="#FFD1D1"
-        ).pack(side=tk.LEFT)
+            command=lambda: self.delete_courier(self.del_name_var.get()),
+            bg="#FFD1D1",
+            font=("Arial", 9)
+        ).pack(side=tk.LEFT, padx=3)
     
     def setup_settlement_frame(self) -> None:
         """Setup settlement frame."""
+        # Container frame for settlement (below management frame)
+        settlement_container = tk.Frame(self.right_frame, bg="white")
+        settlement_container.pack(fill=tk.BOTH, expand=True, pady=(0, 0))
+        
         # Scrollable frame for settlement
-        settlement_canvas = tk.Canvas(self.right_frame, bg="white", highlightthickness=0)
-        settlement_scrollbar = ttk.Scrollbar(self.right_frame, orient="vertical", command=settlement_canvas.yview)
+        settlement_canvas = tk.Canvas(settlement_container, bg="white", highlightthickness=0)
+        settlement_scrollbar = ttk.Scrollbar(settlement_container, orient="vertical", command=settlement_canvas.yview)
         settlement_inner = tk.Frame(settlement_canvas, bg="white")
         
         settlement_canvas_window = settlement_canvas.create_window((0, 0), window=settlement_inner, anchor="nw")
@@ -582,8 +622,12 @@ class CourierManager:
             subtotal_label.grid(row=i, column=1, sticky="e", padx=5)
             # Update label when variable changes
             def update_subtotal(*args, var=self.totals_var[naam], label=subtotal_label):
-                val = var.get()
-                label.config(text=f"{val:.2f}")
+                try:
+                    if label.winfo_exists():
+                        val = var.get()
+                        label.config(text=f"{val:.2f}")
+                except tk.TclError:
+                    pass  # Widget destroyed, ignore
             self.totals_var[naam].trace_add("write", update_subtotal)
             update_subtotal()  # Initial update
             
@@ -608,8 +652,12 @@ class CourierManager:
             eindtotaal_label.grid(row=i, column=3, sticky="e", padx=5)
             # Update label when variable changes
             def update_eindtotaal(*args, var=self.eind_totals_var[naam], label=eindtotaal_label):
-                val = var.get()
-                label.config(text=f"{val:.2f}")
+                try:
+                    if label.winfo_exists():
+                        val = var.get()
+                        label.config(text=f"{val:.2f}")
+                except tk.TclError:
+                    pass  # Widget destroyed, ignore
             self.eind_totals_var[naam].trace_add("write", update_eindtotaal)
             update_eindtotaal()  # Initial update
             
@@ -658,8 +706,12 @@ class CourierManager:
             afrekening_label.grid(row=i, column=7, padx=4, sticky="e")
             # Update label when variable changes
             def update_afrekening(*args, var=self.afrekening_var[naam], label=afrekening_label):
-                val = var.get()
-                label.config(text=f"{val:.2f}")
+                try:
+                    if label.winfo_exists():
+                        val = var.get()
+                        label.config(text=f"{val:.2f}")
+                except tk.TclError:
+                    pass  # Widget destroyed, ignore
             self.afrekening_var[naam].trace_add("write", update_afrekening)
             update_afrekening()  # Initial update
             
@@ -989,11 +1041,18 @@ class CourierManager:
             self.service.add_courier(naam)
             messagebox.showinfo("Succes", f"Koerier '{naam}' is succesvol toegevoegd.")
             self.new_koerier_entry.delete(0, tk.END)
+            # Reload couriers and update UI
             self.load_couriers()
-            self.setup_ui()  # Rebuild UI with new courier
-            # Recreate courier buttons
-            self.setup_courier_buttons()
+            # Update delete combobox values
+            if self.del_combo:
+                self.del_combo['values'] = self.courier_names
+                if self.courier_names:
+                    self.del_name_var.set(self.courier_names[0])
+            # Update only necessary parts instead of full rebuild
+            self._refresh_courier_ui()
         except DatabaseError as e:
+            messagebox.showerror("Fout", str(e))
+        except ValueError as e:
             messagebox.showerror("Fout", str(e))
     
     def delete_courier(self, naam: str) -> None:
@@ -1013,10 +1072,17 @@ class CourierManager:
         try:
             self.service.delete_courier(koerier_id, naam)
             messagebox.showinfo("Succes", f"Koerier '{naam}' is verwijderd.")
+            # Reload couriers and update UI
             self.load_couriers()
-            self.setup_ui()  # Rebuild UI without deleted courier
-            # Recreate courier buttons
-            self.setup_courier_buttons()
+            # Update delete combobox values
+            if self.del_combo:
+                self.del_combo['values'] = self.courier_names
+                if self.courier_names:
+                    self.del_name_var.set(self.courier_names[0])
+                else:
+                    self.del_name_var.set("")
+            # Update only necessary parts instead of full rebuild
+            self._refresh_courier_ui()
         except DatabaseError as e:
             messagebox.showerror("Fout", str(e))
     
@@ -1047,30 +1113,135 @@ class CourierManager:
             
             # Assign local orders
             if local_order_ids:
+                # Get order totals before assignment for incremental update
+                order_totals = self._get_order_totals(local_order_ids)
+                total_to_add = sum(order_totals.values())
+                
+                # Batch database update (fast)
                 self.service.assign_courier_to_orders(local_order_ids, koerier_id)
+                
+                # Update UI immediately (non-blocking)
+                self._update_order_rows_courier(local_order_ids, naam)
+                
+                # Incremental totals update (much faster than full recalculation)
+                if hasattr(self, 'totals_var') and self.totals_var and naam in self.totals_var:
+                    current_total = self.totals_var[naam].get()
+                    self.totals_var[naam].set(round(current_total + total_to_add, 2))
+                    # Schedule non-blocking recalculation of dependent totals
+                    root = self.parent.winfo_toplevel()
+                    root.after(0, lambda: self._update_totals_async(naam))
             
             # Assign online orders via API
             if online_order_ids:
                 self.assign_online_orders(online_order_ids, koerier_id)
-            
-            self.load_orders(force=True)
+                # Update UI for online orders
+                self._update_online_order_rows_courier(online_order_ids, naam)
+                # Note: Online order totals are handled separately as they come from API
         except (ValueError, DatabaseError) as e:
             logger.exception("Error assigning courier")
             messagebox.showerror("Fout", f"Kon koerier niet toewijzen: {e}")
+    
+    def _get_order_totals(self, order_ids: List[int]) -> Dict[int, float]:
+        """Get totals for specific orders (for incremental update)."""
+        if not order_ids:
+            return {}
+        
+        try:
+            with DatabaseContext() as conn:
+                cursor = conn.cursor()
+                placeholders = ','.join('?' * len(order_ids))
+                cursor.execute(
+                    f"SELECT id, totaal FROM bestellingen WHERE id IN ({placeholders})",
+                    order_ids
+                )
+                return {row['id']: float(row['totaal']) for row in cursor.fetchall()}
+        except Exception as e:
+            logger.warning(f"Error getting order totals: {e}")
+            return {}
+    
+    def _update_totals_async(self, koerier_naam: str) -> None:
+        """Update dependent totals asynchronously (non-blocking)."""
+        try:
+            if hasattr(self, 'eind_totals_var') and koerier_naam in self.eind_totals_var:
+                subtotal = self.totals_var[koerier_naam].get()
+                self.eind_totals_var[koerier_naam].set(
+                    self.service.calculate_final_total(subtotal)
+                )
+            self.recalculate_payment(koerier_naam)
+            self.recalculate_total_payment()
+        except Exception as e:
+            logger.debug(f"Error in async totals update: {e}")
+    
+    def _update_order_rows_courier(self, order_ids: List[int], koerier_naam: str) -> None:
+        """Update courier assignment in tree rows without full reload (faster)."""
+        if not self.tree:
+            return
+        
+        try:
+            for order_id in order_ids:
+                # For local orders, the iid is the order_id as string
+                item_id = str(order_id)
+                
+                if self.tree.exists(item_id):
+                    values = self.tree.item(item_id, "values")
+                    if not values or len(values) < 11:
+                        continue
+                    
+                    # Update the courier column (index 10, last column)
+                    new_values = list(values)
+                    new_values[10] = koerier_naam
+                    
+                    # Update tags for color
+                    tag = f"koerier_{koerier_naam.replace(' ', '_')}"
+                    new_tags = (tag,)
+                    
+                    # Update tree item
+                    self.tree.item(item_id, values=tuple(new_values), tags=new_tags)
+        except Exception as e:
+            logger.exception(f"Error updating order rows: {e}")
+            # Fallback to full reload if update fails (non-blocking)
+            root = self.parent.winfo_toplevel()
+            root.after(100, lambda: self.load_orders(force=True))
+    
+    def _update_online_order_rows_courier(self, order_ids: List[int], koerier_naam: str) -> None:
+        """Update courier assignment for online orders in tree rows."""
+        if not self.tree:
+            return
+        
+        try:
+            for order_id in order_ids:
+                item_id = f"online_{order_id}"
+                if self.tree.exists(item_id):
+                    values = self.tree.item(item_id, "values")
+                    if values and len(values) >= 11:
+                        new_values = list(values)
+                        new_values[10] = koerier_naam  # Courier is last column (index 10)
+                        
+                        # Update tags
+                        tag = f"koerier_{koerier_naam.replace(' ', '_')}"
+                        new_tags = (tag, "online")
+                        
+                        self.tree.item(item_id, values=tuple(new_values), tags=new_tags)
+        except Exception as e:
+            logger.exception(f"Error updating online order rows: {e}")
+            # Fallback to full reload if update fails
+            self.load_orders(force=True)
     
     def fetch_online_orders(self, order_date: date) -> List[Dict]:
         """Fetch online orders from API for a specific date."""
         try:
             # Authenticate if needed
             if not self.api_token:
-                self.authenticate_api()
+                if not self.authenticate_api():
+                    return []  # Silent fail if backend not available
             
             if not self.api_token:
                 return []
             
             # Fetch all pending online orders
             response = self.api_session.get(
-                f"{self.api_base_url}/orders/online/pending"
+                f"{self.api_base_url}/orders/online/pending",
+                timeout=2  # Short timeout to avoid hanging
             )
             
             if response.status_code == 200:
@@ -1086,7 +1257,8 @@ class CourierManager:
                 # Re-authenticate
                 if self.authenticate_api():
                     response = self.api_session.get(
-                        f"{self.api_base_url}/orders/online/pending"
+                        f"{self.api_base_url}/orders/online/pending",
+                        timeout=2
                     )
                     if response.status_code == 200:
                         orders = response.json()
@@ -1097,8 +1269,16 @@ class CourierManager:
                                 filtered_orders.append(order)
                         return filtered_orders
             return []
+        except requests.exceptions.ConnectionError:
+            # Backend not available - only log once per session
+            if not hasattr(self, '_api_connection_logged'):
+                logger.debug("Backend API not available (connection refused)")
+                self._api_connection_logged = True
+            return []
+        except requests.exceptions.Timeout:
+            return []  # Silent timeout
         except Exception as e:
-            logger.error(f"Error fetching online orders: {e}")
+            logger.debug(f"Error fetching online orders: {e}")
             return []
     
     def authenticate_api(self) -> bool:
@@ -1110,7 +1290,8 @@ class CourierManager:
                     "username": "admin",
                     "password": "admin123"
                 },
-                headers={"Content-Type": "application/x-www-form-urlencoded"}
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                timeout=2  # Short timeout
             )
             if response.status_code == 200:
                 data = response.json()
@@ -1119,11 +1300,16 @@ class CourierManager:
                     self.api_session.headers.update({
                         "Authorization": f"Bearer {self.api_token}"
                     })
-                    logger.info("API authentication successful")
+                    logger.debug("API authentication successful")
                     return True
             return False
+        except requests.exceptions.ConnectionError:
+            # Backend not available - silent fail
+            return False
+        except requests.exceptions.Timeout:
+            return False
         except Exception as e:
-            logger.error(f"Error authenticating with API: {e}")
+            logger.debug(f"Error authenticating with API: {e}")
             return False
     
     def assign_online_orders(self, order_ids: List[int], koerier_id: int) -> None:

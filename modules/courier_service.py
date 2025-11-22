@@ -18,6 +18,36 @@ logger = get_logger("pizzeria.courier_service")
 class CourierService:
     """Service class for courier-related business operations."""
     
+    # Cache for table schema checks
+    _table_schema_cache: Dict[str, bool] = {}
+    
+    @staticmethod
+    def _has_column(table_name: str, column_name: str) -> bool:
+        """
+        Check if a table has a specific column (cached).
+        
+        Args:
+            table_name: Name of the table
+            column_name: Name of the column to check
+            
+        Returns:
+            True if column exists, False otherwise
+        """
+        cache_key = f"{table_name}.{column_name}"
+        if cache_key in CourierService._table_schema_cache:
+            return CourierService._table_schema_cache[cache_key]
+        
+        try:
+            with DatabaseContext() as conn:
+                cursor = conn.cursor()
+                cursor.execute(f"PRAGMA table_info({table_name})")
+                columns = [row[1] for row in cursor.fetchall()]
+                has_column = column_name in columns
+                CourierService._table_schema_cache[cache_key] = has_column
+                return has_column
+        except sqlite3.Error:
+            return False
+    
     @staticmethod
     def get_all_couriers() -> Dict[str, int]:
         """
@@ -107,10 +137,8 @@ class CourierService:
         try:
             with DatabaseContext() as conn:
                 cursor = conn.cursor()
-                # Check if afhaal column exists
-                cursor.execute("PRAGMA table_info(bestellingen)")
-                columns = [row[1] for row in cursor.fetchall()]
-                has_afhaal = 'afhaal' in columns
+                # Check if afhaal column exists (cached)
+                has_afhaal = CourierService._has_column("bestellingen", "afhaal")
                 
                 # Build query with filters
                 conditions = ["b.datum = ?"]
@@ -149,21 +177,24 @@ class CourierService:
     @staticmethod
     def assign_courier_to_orders(order_ids: List[int], koerier_id: int) -> None:
         """
-        Assign a courier to multiple orders.
+        Assign a courier to multiple orders (optimized batch update).
         
         Args:
             order_ids: List of order IDs to assign
             koerier_id: ID of the courier to assign
         """
+        if not order_ids:
+            return
+        
         try:
             with DatabaseContext() as conn:
                 cursor = conn.cursor()
-                for order_id in order_ids:
-                    cursor.execute(
-                        "UPDATE bestellingen SET koerier_id = ? WHERE id = ?",
-                        (koerier_id, order_id)
-                    )
-            logger.info(f"Assigned courier {koerier_id} to {len(order_ids)} orders")
+                # Batch update: use executemany for better performance
+                cursor.executemany(
+                    "UPDATE bestellingen SET koerier_id = ? WHERE id = ?",
+                    [(koerier_id, order_id) for order_id in order_ids]
+                )
+            logger.info(f"Assigned courier {koerier_id} to {len(order_ids)} orders (batch update)")
         except sqlite3.Error as e:
             logger.exception(f"Error assigning courier: {e}")
             raise DatabaseError(f"Kon koerier niet toewijzen: {e}") from e

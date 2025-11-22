@@ -1,5 +1,5 @@
 {
-  "thermal_printer_name": "Default",
+  "thermal_printer_name": "EPSON TM-T20II Receipt5",
   "category_order": [
     "schotels",
     "grote-broodjes",
@@ -84,25 +84,26 @@
       "Dello chef"
     ]
   },
+  "bon_footer_custom_text": "",
   "customer_info": {
     "message": "Beste klanten,\n\nVolg voor actuele informatie onze website www.pitapizzanapoli.be.\n\nMet vriendelijke groeten,\nPita Pizza Napoli"
   },
   "delivery_zones": {
-    "Zwijndrecht": 35.00,
-    "Nieuw-Namen": 30.00,
-    "Nieuwkerken-Waas": 15.00,
-    "Sint-Niklaas": 25.00,
-    "Beveren": 20.00,
-    "Vrasene": 15.00,
-    "Haasdonk": 25.00,
-    "Kallo": 25.00,
-    "Melsele": 25.00,
-    "Verrebroek": 15.00,
-    "Kieldrecht": 25.00,
-    "Doel": 35.00,
-    "Klein meerdonk": 25.00,
-    "Meerdonk": 25.00,
-    "Sint-Gillis-Waas": 25.00,
-    "De Klinge": 35.00
+    "Zwijndrecht": 35.0,
+    "Nieuw-Namen": 30.0,
+    "Nieuwkerken-Waas": 15.0,
+    "Sint-Niklaas": 25.0,
+    "Beveren": 20.0,
+    "Vrasene": 15.0,
+    "Haasdonk": 25.0,
+    "Kallo": 25.0,
+    "Melsele": 25.0,
+    "Verrebroek": 15.0,
+    "Kieldrecht": 25.0,
+    "Doel": 35.0,
+    "Klein meerdonk": 25.0,
+    "Meerdonk": 25.0,
+    "Sint-Gillis-Waas": 25.0,
+    "De Klinge": 35.0
   }
 }

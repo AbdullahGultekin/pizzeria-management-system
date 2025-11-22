@@ -197,15 +197,18 @@ def validate_house_number(number: str, required: bool = True) -> str:
     """
     Validate house number.
     
+    Accepts any string including text like "bus 101", "123A", "12-14", etc.
+    Only validates length, not format, to allow flexibility for different address formats.
+    
     Args:
-        number: House number string
+        number: House number string (can contain letters, numbers, spaces, hyphens, etc.)
         required: Whether house number is required
         
     Returns:
-        Validated house number
+        Validated house number (trimmed)
         
     Raises:
-        ValidationError: If house number is invalid
+        ValidationError: If house number is invalid (empty when required, or too long)
     """
     if not number or not number.strip():
         if required:
@@ -214,8 +217,9 @@ def validate_house_number(number: str, required: bool = True) -> str:
     
     number = number.strip()
     if len(number) > 20:
-        raise ValidationError("Huisnummer is te lang")
+        raise ValidationError("Huisnummer is te lang (maximaal 20 tekens)")
     
+    # Accept any characters - house numbers can be "123", "123A", "bus 101", "12-14", etc.
     return number
 
 

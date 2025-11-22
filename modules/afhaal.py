@@ -120,13 +120,13 @@ class AfhaalManager:
         self.tree.heading("Tijd", text="Tijd")
         self.tree.heading("Status", text="Status")
         
-        self.tree.column("Soort", width=80, anchor=tk.CENTER)
-        self.tree.column("Nummer", width=100, anchor=tk.CENTER)
-        self.tree.column("Totaal", width=80, anchor=tk.RIGHT)
-        self.tree.column("Naam", width=150, anchor=tk.W)
-        self.tree.column("Telefoon", width=120, anchor=tk.W)
-        self.tree.column("Tijd", width=80, anchor=tk.CENTER)
-        self.tree.column("Status", width=100, anchor=tk.CENTER)
+        self.tree.column("Soort", width=80, anchor="center")
+        self.tree.column("Nummer", width=100, anchor="center")
+        self.tree.column("Totaal", width=80, anchor="e")
+        self.tree.column("Naam", width=150, anchor="w")
+        self.tree.column("Telefoon", width=120, anchor="w")
+        self.tree.column("Tijd", width=80, anchor="center")
+        self.tree.column("Status", width=100, anchor="center")
         
         self.tree.pack(fill=tk.BOTH, expand=True)
         
@@ -165,17 +165,76 @@ class AfhaalManager:
             naam = order.get('klant_naam', 'N/A')
             telefoon = order.get('telefoon', 'N/A')
             tijd = order.get('tijd', 'N/A')
-            status = "Klaar" if order.get('koerier_id') else "Wachten"
+            # Get status from database, default to "Nieuw" if not set
+            status = order.get('status', 'Nieuw')
+            if not status or status not in ['Nieuw', 'Afgehaald']:
+                status = 'Nieuw'
+            
+            # Store order ID in item for status updates
+            item_id = f"order_{order.get('id')}"
             
             self.tree.insert(
                 "",
                 tk.END,
+                iid=item_id,
                 values=(soort, nummer, totaal, naam, telefoon, tijd, status),
-                tags=("afhaal",)
+                tags=("afhaal", f"status_{status.lower()}")
             )
         
         # Configure tag colors
         self.tree.tag_configure("afhaal", background="#FFF9C4")  # Light yellow for pickup orders
+        self.tree.tag_configure("status_nieuw", background="#FFF9C4")  # Light yellow for new orders
+        self.tree.tag_configure("status_afgehaald", background="#C8E6C9")  # Light green for picked up orders
+        
+        # Bind click on status column to change status
+        self.tree.bind("<Button-1>", self._on_tree_click)
+    
+    def _on_tree_click(self, event: tk.Event) -> None:
+        """Handle click on tree to change status."""
+        region = self.tree.identify_region(event.x, event.y)
+        if region == "cell":
+            column = self.tree.identify_column(event.x)
+            # Status is column 7 (index 6)
+            if column == "#7":
+                item = self.tree.identify_row(event.y)
+                if item:
+                    self._toggle_status(item)
+    
+    def _toggle_status(self, item_id: str) -> None:
+        """Toggle status between Nieuw and Afgehaald."""
+        if not item_id or not item_id.startswith("order_"):
+            return
+        
+        try:
+            order_id = int(item_id.replace("order_", ""))
+            values = self.tree.item(item_id, "values")
+            if not values or len(values) < 7:
+                return
+            
+            current_status = values[6] if len(values) > 6 else "Nieuw"
+            new_status = "Afgehaald" if current_status == "Nieuw" else "Nieuw"
+            
+            # Update database
+            with DatabaseContext() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "UPDATE bestellingen SET status = ? WHERE id = ?",
+                    (new_status, order_id)
+                )
+            
+            # Update tree display
+            new_values = list(values)
+            new_values[6] = new_status
+            self.tree.item(item_id, values=tuple(new_values))
+            
+            # Update tags for color
+            self.tree.item(item_id, tags=("afhaal", f"status_{new_status.lower()}"))
+            
+            logger.info(f"Status updated for order {order_id}: {current_status} -> {new_status}")
+            
+        except (ValueError, Exception) as e:
+            logger.exception(f"Error toggling status: {e}")
+            messagebox.showerror("Fout", f"Kon status niet wijzigen: {e}")
     
     def get_afhaal_orders_for_date(self, order_date: date) -> List[Dict]:
         """
@@ -202,6 +261,7 @@ class AfhaalManager:
                                b.totaal,
                                b.tijd,
                                b.koerier_id,
+                               COALESCE(b.status, 'Nieuw') AS status,
                                k.naam AS klant_naam,
                                k.telefoon
                         FROM bestellingen b
