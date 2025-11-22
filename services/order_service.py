@@ -36,7 +36,8 @@ class OrderService:
         opmerking: Optional[str] = None,
         koerier_id: Optional[int] = None,
         levertijd: Optional[str] = None,
-        korting_percentage: float = 0.0
+        korting_percentage: float = 0.0,
+        afhaal: bool = False
     ) -> Tuple[bool, Optional[str]]:
         """
         Create a new order.
@@ -96,7 +97,8 @@ class OrderService:
             opmerking=opmerking,
             bonnummer=bonnummer,
             koerier_id=koerier_id,
-            levertijd=levertijd
+            levertijd=levertijd,
+            afhaal=afhaal
         )
         
         # Add order items

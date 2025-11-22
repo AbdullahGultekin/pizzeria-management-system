@@ -11,9 +11,10 @@ from typing import Dict, List, Optional
 from database import DatabaseContext
 from logging_config import get_logger
 from exceptions import DatabaseError
-from modules.courier_config import STARTGELD, CARD_COLORS
+from modules.courier_config import STARTGELD, CARD_COLORS, KM_TARIEF, UUR_TARIEF
 from modules.courier_service import CourierService
 from modules.courier_ui import CourierUI
+import requests
 
 logger = get_logger("pizzeria.koeriers")
 
@@ -56,6 +57,11 @@ class CourierManager:
         self.del_combo: Optional[ttk.Combobox] = None
         self.courier_cards_frame: Optional[tk.Frame] = None
         self.totals_frame: Optional[tk.Frame] = None
+        
+        # API configuration for online orders
+        self.api_base_url = "http://localhost:8000/api/v1"
+        self.api_token = None
+        self.api_session = requests.Session()
     
     def load_couriers(self) -> None:
         """Load couriers from database and initialize variables."""
@@ -87,73 +93,385 @@ class CourierManager:
             messagebox.showerror("Fout", str(e))
     
     def setup_ui(self) -> None:
-        """Setup the main UI."""
+        """Setup the main UI (matching example layout)."""
         # Clear parent
         for w in self.parent.winfo_children():
             w.destroy()
         
-        # Create paned window
-        self.paned = tk.PanedWindow(self.parent, orient=tk.HORIZONTAL, sashrelief=tk.RAISED, sashpad=4)
-        self.paned.pack(fill=tk.BOTH, expand=True)
+        # Main container
+        main_frame = tk.Frame(self.parent, bg="white")
+        main_frame.pack(fill=tk.BOTH, expand=True)
         
-        # Create left and right frames
-        self.left_frame = tk.Frame(self.paned, padx=10, pady=10)
-        self.paned.add(self.left_frame, minsize=400)
+        # Top section - Action buttons
+        top_buttons_frame = tk.Frame(main_frame, bg="white", padx=10, pady=5)
+        top_buttons_frame.pack(fill=tk.X)
         
-        self.right_frame = tk.Frame(self.paned, padx=10, pady=10)
-        self.paned.add(self.right_frame, minsize=1100)
+        tk.Button(
+            top_buttons_frame,
+            text="Totalen afdrukken",
+            command=self.print_totals,
+            bg="#4CAF50",
+            fg="white",
+            font=("Arial", 10, "bold"),
+            padx=15,
+            pady=5
+        ).pack(side=tk.LEFT, padx=(0, 5))
+        
+        tk.Button(
+            top_buttons_frame,
+            text="Routebeschrijving",
+            command=self.show_route_for_selected,
+            bg="#2196F3",
+            fg="white",
+            font=("Arial", 10, "bold"),
+            padx=15,
+            pady=5
+        ).pack(side=tk.LEFT, padx=(0, 5))
+        
+        # Filter checkbox for orders without courier
+        if not hasattr(self, 'filter_without_courier'):
+            self.filter_without_courier = tk.BooleanVar(value=False)
+        filter_checkbox = tk.Checkbutton(
+            top_buttons_frame,
+            text="Alleen zonder koerier",
+            variable=self.filter_without_courier,
+            command=lambda: self.load_orders(force=True),
+            bg="white",
+            font=("Arial", 9),
+            padx=10
+        )
+        filter_checkbox.pack(side=tk.LEFT, padx=(10, 0))
+        
+        tk.Button(
+            top_buttons_frame,
+            text="Vernieuwen",
+            command=lambda: self.load_orders(force=True),
+            bg="#FF9800",
+            fg="white",
+            font=("Arial", 10, "bold"),
+            padx=15,
+            pady=5
+        ).pack(side=tk.LEFT)
+        
+        # Main content area - Split into table and settlement
+        content_paned = tk.PanedWindow(main_frame, orient=tk.HORIZONTAL, sashrelief=tk.RAISED, sashpad=2)
+        content_paned.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # Left panel - Table
+        left_panel = tk.Frame(content_paned, bg="white")
+        content_paned.add(left_panel, minsize=500, width=600)
+        
+        # Right panel - Settlement frame
+        right_panel = tk.Frame(content_paned, bg="white")
+        content_paned.add(right_panel, minsize=400, width=500)
         
         # Initialize UI helper
         self.ui = CourierUI(self.parent, self.courier_names)
         
-        # Setup components
-        self.setup_filters()
-        self.setup_table()
-        self.setup_right_panel()
+        # Setup table with new columns
+        self.setup_table_new(left_panel)
+        
+        # Setup settlement frame (right panel)
+        self.right_frame = right_panel
+        self.setup_settlement_frame()
+        
+        # Bottom section - Courier buttons
+        courier_buttons_frame = tk.Frame(main_frame, bg="white", padx=10, pady=10)
+        courier_buttons_frame.pack(fill=tk.X, side=tk.BOTTOM)
+        
+        tk.Label(
+            courier_buttons_frame,
+            text="Koeriers:",
+            font=("Arial", 11, "bold"),
+            bg="white",
+            fg="#333"
+        ).pack(side=tk.LEFT, padx=(0, 10))
+        
+        # Courier buttons in a horizontal row
+        for naam in self.courier_names:
+            btn = tk.Button(
+                courier_buttons_frame,
+                text=naam,
+                command=lambda n=naam: self.assign_courier(n),
+                bg="#4CAF50",
+                fg="white",
+                font=("Arial", 10, "bold"),
+                padx=12,
+                pady=6,
+                relief=tk.RAISED,
+                borderwidth=2
+            )
+            btn.pack(side=tk.LEFT, padx=3)
+        
+        # Store reference to courier buttons frame for updates
+        self.courier_buttons_frame = courier_buttons_frame
         
         # Load initial data
         self.load_orders()
     
+    def setup_courier_buttons(self) -> None:
+        """Setup/update courier buttons in bottom frame."""
+        if not hasattr(self, 'courier_buttons_frame'):
+            return
+        
+        # Clear existing buttons (except label)
+        for widget in self.courier_buttons_frame.winfo_children():
+            if isinstance(widget, tk.Button):
+                widget.destroy()
+        
+        # Add buttons for each courier
+        for naam in self.courier_names:
+            btn = tk.Button(
+                self.courier_buttons_frame,
+                text=naam,
+                command=lambda n=naam: self.assign_courier(n),
+                bg="#4CAF50",
+                fg="white",
+                font=("Arial", 10, "bold"),
+                padx=12,
+                pady=6,
+                relief=tk.RAISED,
+                borderwidth=2
+            )
+            btn.pack(side=tk.LEFT, padx=3)
+    
+    def print_totals(self) -> None:
+        """Print totals for all couriers."""
+        if not hasattr(self, 'totals_var') or not self.totals_var:
+            messagebox.showwarning("Geen data", "Geen koerier data beschikbaar om af te drukken.")
+            return
+        
+        try:
+            from datetime import datetime
+            import sys
+            import os
+            
+            # Try to import win32print for Windows
+            try:
+                import win32print
+                WIN32PRINT_AVAILABLE = True
+            except ImportError:
+                WIN32PRINT_AVAILABLE = False
+            
+            if not WIN32PRINT_AVAILABLE:
+                messagebox.showwarning(
+                    "Platform Error",
+                    "Windows printer support niet beschikbaar.\n\n"
+                    "De afrekening kan niet worden afgedrukt op dit platform."
+                )
+                return
+            
+            # Load printer settings
+            try:
+                import json
+                settings_file = "settings.json"
+                if os.path.exists(settings_file):
+                    with open(settings_file, 'r', encoding='utf-8') as f:
+                        app_settings = json.load(f)
+                else:
+                    app_settings = {}
+                
+                printer_name = app_settings.get("thermal_printer_name", "Default")
+                
+                if not printer_name or printer_name == "Default":
+                    messagebox.showwarning(
+                        "Printer niet geconfigureerd",
+                        "Er is geen printer geconfigureerd.\n\n"
+                        "Ga naar Instellingen > Printer Instellingen om een printer te selecteren."
+                    )
+                    return
+            except Exception as e:
+                logger.error(f"Error loading printer settings: {e}")
+                messagebox.showerror("Fout", f"Kon printer instellingen niet laden: {e}")
+                return
+            
+            # Build settlement report text
+            lines = []
+            lines.append("=" * 50)
+            lines.append("AFREKENING KOERIERS")
+            lines.append("=" * 50)
+            lines.append(f"Datum: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+            lines.append("")
+            lines.append("-" * 50)
+            
+            # Header
+            lines.append(f"{'Koerier':<20} {'Subtotaal':>10} {'Startgeld':>10} {'Eindtotaal':>12} {'Km':>6} {'Uur':>6} {'Extra':>8} {'Totaal':>10}")
+            lines.append("-" * 50)
+            
+            total_payment = 0.0
+            total_orders = 0.0
+            
+            # Data for each courier
+            for naam in self.courier_names:
+                if naam not in self.totals_var:
+                    continue
+                
+                subtotal = self.totals_var[naam].get()
+                eindtotaal = self.eind_totals_var[naam].get() if naam in self.eind_totals_var else subtotal + STARTGELD
+                km = self.extra_km_var[naam].get() if naam in self.extra_km_var else 0.0
+                uur = self.extra_uur_var[naam].get() if naam in self.extra_uur_var else 0.0
+                extra = self.extra_bedrag_var[naam].get() if naam in self.extra_bedrag_var else 0.0
+                afrekening = self.afrekening_var[naam].get() if naam in self.afrekening_var else 0.0
+                
+                total_orders += subtotal
+                total_payment += afrekening
+                
+                lines.append(
+                    f"{naam[:18]:<20} "
+                    f"{subtotal:>10.2f} "
+                    f"{STARTGELD:>10.2f} "
+                    f"{eindtotaal:>12.2f} "
+                    f"{km:>6.1f} "
+                    f"{uur:>6.1f} "
+                    f"{extra:>8.2f} "
+                    f"{afrekening:>10.2f}"
+                )
+            
+            lines.append("-" * 50)
+            lines.append(f"{'TOTAAL BESTELLINGEN':<20} {total_orders:>10.2f}")
+            lines.append(f"{'TOTAAL UITBETALING':<20} {total_payment:>10.2f}")
+            lines.append("=" * 50)
+            lines.append("")
+            lines.append(f"Tarief per km: €{KM_TARIEF:.2f}")
+            lines.append(f"Tarief per uur: €{UUR_TARIEF:.2f}")
+            lines.append(f"Startgeld per koerier: €{STARTGELD:.2f}")
+            
+            # Print the report using win32print
+            report_text = "\n".join(lines)
+            
+            try:
+                hprinter = win32print.OpenPrinter(printer_name)
+                try:
+                    hjob = win32print.StartDocPrinter(hprinter, 1, ("Afrekening Koeriers", None, "RAW"))
+                    win32print.StartPagePrinter(hprinter)
+                    
+                    # Print report text
+                    for line in report_text.split('\n'):
+                        try:
+                            encoded = line.encode('cp858', errors='replace')
+                            win32print.WritePrinter(hprinter, encoded)
+                            win32print.WritePrinter(hprinter, b'\n')
+                        except Exception as e:
+                            logger.warning(f"Error encoding line: {e}")
+                    
+                    win32print.WritePrinter(hprinter, b'\n\n\n')
+                    win32print.EndPagePrinter(hprinter)
+                    win32print.EndDocPrinter(hprinter)
+                    
+                    logger.info(f"Courier totals printed successfully to {printer_name}")
+                    messagebox.showinfo("Succes", "Totalen zijn afgedrukt.")
+                finally:
+                    win32print.ClosePrinter(hprinter)
+            except Exception as e:
+                logger.exception(f"Error printing to {printer_name}: {e}")
+                messagebox.showerror("Fout", f"Kon niet afdrukken naar {printer_name}: {e}")
+            
+        except Exception as e:
+            logger.exception("Error printing totals")
+            messagebox.showerror("Fout", f"Kon totalen niet afdrukken: {e}")
+    
+    def show_route_for_selected(self) -> None:
+        """Show route for selected order."""
+        selected = self.tree.selection()
+        if not selected:
+            messagebox.showinfo("Selectie", "Selecteer eerst een bestelling.")
+            return
+        
+        # Get first selected order
+        item_id = selected[0]
+        values = self.tree.item(item_id, "values")
+        
+        # Build address from values (postcode column removed, indices shifted)
+        straat = values[3] if len(values) > 3 else ""
+        huis_nr = values[4] if len(values) > 4 else ""
+        gemeente = values[5] if len(values) > 5 else ""
+        
+        address = f"{straat} {huis_nr}, {gemeente}".strip()
+        
+        if address:
+            import webbrowser
+            google_maps_url = f"https://www.google.com/maps/dir/?api=1&destination={address.replace(' ', '+')}"
+            webbrowser.open(google_maps_url)
+        else:
+            messagebox.showwarning("Adres ontbreekt", "Geen adres beschikbaar voor deze bestelling.")
+    
     def setup_filters(self) -> None:
-        """Setup filter bar."""
-        self.filter_vars = self.ui.create_filter_bar(
-            self.left_frame,
-            on_search_change=self.load_orders,
-            on_koerier_change=self.load_orders,
-            on_date_change=self.load_orders,
-            on_reload=lambda: self.load_orders(force=True)
-        )
+        """Setup filter bar (not used in new layout)."""
+        # Initialize filter vars for compatibility
+        self.filter_vars = {
+            "search": tk.StringVar(),
+            "koerier": tk.StringVar(value="Alle"),
+            "datum": tk.StringVar(value=date.today().strftime('%Y-%m-%d'))
+        }
     
     def setup_table(self) -> None:
-        """Setup orders table."""
-        self.tree = self.ui.create_orders_table(self.left_frame)
+        """Setup orders table (old method - kept for compatibility)."""
+        pass
+    
+    def setup_table_new(self, parent: tk.Widget) -> None:
+        """Setup orders table with new columns matching example."""
+        # Define columns - removed postcode, added koerier
+        columns = ("soort", "nummer", "totaal", "straat", "huis_nr", "gemeente", "tijd", "vertrek", "betaalmethode", "koerier")
+        headers = {
+            "soort": "Soort",
+            "nummer": "Nummer",
+            "totaal": "Totaal",
+            "straat": "Straat",
+            "huis_nr": "Huis nr.",
+            "gemeente": "Gemeente",
+            "tijd": "Tijd",
+            "vertrek": "Vertrek",
+            "betaalmethode": "Betaalmethode",
+            "koerier": "Koerier"
+        }
+        widths = {
+            "soort": 80,
+            "nummer": 60,
+            "totaal": 80,
+            "straat": 150,
+            "huis_nr": 70,
+            "gemeente": 150,
+            "tijd": 70,
+            "vertrek": 70,
+            "betaalmethode": 120,
+            "koerier": 120
+        }
         
-        # Selection label
-        btns = tk.Frame(self.left_frame)
-        btns.pack(fill=tk.X, pady=(8, 0))
-        geselecteerd_lbl = tk.Label(btns, text="Geen selectie", fg="#666")
-        geselecteerd_lbl.pack(side=tk.RIGHT)
+        # Create Treeview
+        self.tree = ttk.Treeview(parent, columns=columns, show="headings", height=15)
         
-        def update_selection_label(*_):
-            n = len(self.tree.selection())
-            geselecteerd_lbl.config(text=f"{n} geselecteerd" if n else "Geen selectie")
+        # Configure columns
+        for col in columns:
+            self.tree.heading(col, text=headers[col])
+            anchor = "e" if col in ("totaal", "nummer") else ("center" if col in ("tijd", "vertrek") else "w")
+            self.tree.column(col, width=widths[col], anchor=anchor)
         
-        self.tree.bind("<<TreeviewSelect>>", update_selection_label)
+        # Store column indices for reference
+        self.column_indices = {col: idx for idx, col in enumerate(columns)}
+        
+        # Scrollbar
+        scroll_y = ttk.Scrollbar(parent, orient=tk.VERTICAL, command=self.tree.yview)
+        self.tree.configure(yscrollcommand=scroll_y.set)
+        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scroll_y.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Configure styles
+        style = ttk.Style()
+        style.configure("Treeview", rowheight=25)
+        self.tree.tag_configure("row_a", background="#F5F5F5")
+        self.tree.tag_configure("row_b", background="white")
+        self.tree.tag_configure("online", background="#E3F2FD")  # Light blue for online orders
+        self.tree.tag_configure("selected", background="#B3E5FC", foreground="#0D47A1")
+        
+        # Configure courier-specific row colors
+        for i, naam in enumerate(self.courier_names):
+            tag = f"koerier_{naam.replace(' ', '_')}"
+            bg_color = CARD_COLORS[i % len(CARD_COLORS)][0]
+            self.tree.tag_configure(tag, background=bg_color)
     
     def setup_right_panel(self) -> None:
-        """Setup right panel with courier cards and settlement."""
-        tk.Label(self.right_frame, text="Koeriers", font=("Arial", 13, "bold")).pack(anchor="w")
-        
-        # Courier cards
-        self.courier_cards_frame = tk.Frame(self.right_frame)
-        self.courier_cards_frame.pack(fill=tk.X)
-        self.ui.create_courier_cards(self.courier_cards_frame, self.assign_courier)
-        
-        # Management frame
-        self.setup_management_frame()
-        
-        # Settlement frame
-        self.setup_settlement_frame()
+        """Setup right panel (not used in new layout)."""
+        pass
     
     def setup_management_frame(self) -> None:
         """Setup courier management frame."""
@@ -189,14 +507,35 @@ class CourierManager:
     
     def setup_settlement_frame(self) -> None:
         """Setup settlement frame."""
+        # Scrollable frame for settlement
+        settlement_canvas = tk.Canvas(self.right_frame, bg="white", highlightthickness=0)
+        settlement_scrollbar = ttk.Scrollbar(self.right_frame, orient="vertical", command=settlement_canvas.yview)
+        settlement_inner = tk.Frame(settlement_canvas, bg="white")
+        
+        settlement_canvas_window = settlement_canvas.create_window((0, 0), window=settlement_inner, anchor="nw")
+        settlement_canvas.configure(yscrollcommand=settlement_scrollbar.set)
+        
+        def _on_canvas_configure(event):
+            canvas_width = event.width
+            settlement_canvas.itemconfig(settlement_canvas_window, width=canvas_width)
+        
+        def _on_frame_configure(event):
+            settlement_canvas.configure(scrollregion=settlement_canvas.bbox("all"))
+        
+        settlement_canvas.bind('<Configure>', _on_canvas_configure)
+        settlement_inner.bind('<Configure>', _on_frame_configure)
+        
+        settlement_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        settlement_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
         self.totals_frame = tk.LabelFrame(
-            self.right_frame,
+            settlement_inner,
             text="Afrekening per koerier",
             padx=8,
             pady=8,
             bg="#F3F6FC"
         )
-        self.totals_frame.pack(fill=tk.X)
+        self.totals_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
         # Headers
         headers = [
@@ -231,14 +570,22 @@ class CourierManager:
                 font=("Arial", 10, "bold")
             ).grid(row=i, column=0, sticky="we", padx=5)
             
-            tk.Label(
+            # Subtotal label with formatting
+            subtotal_label = tk.Label(
                 self.totals_frame,
-                textvariable=self.totals_var[naam],
+                text="0.00",
                 anchor="e",
                 bg=bg_light,
                 fg=fg_dark,
                 font=("Arial", 10)
-            ).grid(row=i, column=1, sticky="e", padx=5)
+            )
+            subtotal_label.grid(row=i, column=1, sticky="e", padx=5)
+            # Update label when variable changes
+            def update_subtotal(*args, var=self.totals_var[naam], label=subtotal_label):
+                val = var.get()
+                label.config(text=f"{val:.2f}")
+            self.totals_var[naam].trace_add("write", update_subtotal)
+            update_subtotal()  # Initial update
             
             tk.Label(
                 self.totals_frame,
@@ -249,14 +596,22 @@ class CourierManager:
                 font=("Arial", 10)
             ).grid(row=i, column=2, sticky="e", padx=5)
             
-            tk.Label(
+            # Eindtotaal label with formatting
+            eindtotaal_label = tk.Label(
                 self.totals_frame,
-                textvariable=self.eind_totals_var[naam],
+                text="0.00",
                 font=("Arial", 10, "bold"),
                 anchor="e",
                 bg=bg_light,
                 fg=fg_dark
-            ).grid(row=i, column=3, sticky="e", padx=5)
+            )
+            eindtotaal_label.grid(row=i, column=3, sticky="e", padx=5)
+            # Update label when variable changes
+            def update_eindtotaal(*args, var=self.eind_totals_var[naam], label=eindtotaal_label):
+                val = var.get()
+                label.config(text=f"{val:.2f}")
+            self.eind_totals_var[naam].trace_add("write", update_eindtotaal)
+            update_eindtotaal()  # Initial update
             
             entry_bg = "#FFFFFF"
             tk.Entry(
@@ -292,13 +647,21 @@ class CourierManager:
                 borderwidth=2
             ).grid(row=i, column=6, padx=2)
             
-            tk.Label(
+            # Afrekening label with formatting
+            afrekening_label = tk.Label(
                 self.totals_frame,
-                textvariable=self.afrekening_var[naam],
+                text="0.00",
                 font=("Arial", 11, "bold"),
                 fg=fg_dark,
                 bg=bg_light
-            ).grid(row=i, column=7, padx=4, sticky="e")
+            )
+            afrekening_label.grid(row=i, column=7, padx=4, sticky="e")
+            # Update label when variable changes
+            def update_afrekening(*args, var=self.afrekening_var[naam], label=afrekening_label):
+                val = var.get()
+                label.config(text=f"{val:.2f}")
+            self.afrekening_var[naam].trace_add("write", update_afrekening)
+            update_afrekening()  # Initial update
             
             # Bind recalculation
             def make_recalc(naam_in):
@@ -374,13 +737,65 @@ class CourierManager:
         except ValueError:
             order_date = date.today()
         
-        # Get orders
+        # Get orders (exclude afhaal orders, only delivery orders)
         try:
-            orders = self.service.get_orders_for_date(order_date)
+            # Check if filter for "only without courier" is active
+            filter_var = getattr(self, 'filter_without_courier', None)
+            if isinstance(filter_var, tk.BooleanVar):
+                only_without_courier = filter_var.get()
+            else:
+                only_without_courier = False
+            
+            orders = self.service.get_orders_for_date(
+                order_date, 
+                exclude_afhaal=True,  # Only show delivery orders
+                only_without_courier=only_without_courier
+            )
         except DatabaseError as e:
             logger.exception("Error loading orders")
             messagebox.showerror("Fout", str(e))
             return
+        
+        # Get online orders from API
+        online_orders = self.fetch_online_orders(order_date)
+        if online_orders:
+            # Convert online orders to same format as local orders
+            for online_order in online_orders:
+                # Parse address
+                klant_adres = online_order.get('klant_adres', '')
+                straat = ''
+                huisnummer = ''
+                plaats = ''
+                if klant_adres:
+                    # Format: "Straat Huisnummer, Postcode Gemeente"
+                    parts = klant_adres.split(',')
+                    if len(parts) >= 1:
+                        address_part = parts[0].strip()
+                        address_words = address_part.split()
+                        if len(address_words) > 1:
+                            straat = ' '.join(address_words[:-1])
+                            huisnummer = address_words[-1]
+                    if len(parts) >= 2:
+                        plaats = parts[1].strip()
+                
+                # Convert to same format as local orders
+                order_dict = {
+                    'id': f"online_{online_order['id']}",  # Prefix to distinguish
+                    'tijd': online_order.get('tijd', ''),
+                    'straat': straat,
+                    'huisnummer': huisnummer,
+                    'plaats': plaats,
+                    'telefoon': online_order.get('klant_telefoon', ''),
+                    'totaal': online_order.get('totaal', 0),
+                    'koerier_naam': self.get_courier_name_by_id(online_order.get('koerier_id')),
+                    'online': True  # Mark as online order
+                }
+                orders.append(order_dict)
+        
+        # Cache online orders data for lookups
+        online_orders_cache = {}
+        for oo in self.fetch_online_orders(order_date):
+            online_orders_cache[oo['id']] = oo
         
         # Get filter values
         search_text = self.filter_vars.get("search", tk.StringVar()).get()
@@ -400,77 +815,168 @@ class CourierManager:
             else:
                 tags = (base_tag, "unassigned")
             
-            koerier_cell = koerier_naam if koerier_naam else "(geen)"
+            # Mark online orders with special tag
+            if order.get('online'):
+                tags = tags + ("online",)
+            
+            # Determine order number and type
+            if order.get('online'):
+                soort = "Online"
+                nummer = str(order['id']).replace("online_", "")
+                # Get online order data from cache
+                online_order_data = online_orders_cache.get(int(nummer))
+            else:
+                soort = "Kassa"
+                nummer = str(order.get('id', ''))
+                online_order_data = None
+            
+            # Get betaalmethode for online orders
+            betaalmethode = "Cash"
+            if online_order_data:
+                betaalmethode_raw = online_order_data.get('betaalmethode', 'cash')
+                if betaalmethode_raw == 'online':
+                    betaalmethode = "Bancontact/M.."
+                else:
+                    betaalmethode = "Cash"
+            
+            # Parse plaats to get gemeente (only gemeente, no postcode)
+            gemeente = ""
+            plaats = order.get('plaats', '')
+            if plaats:
+                plaats_parts = plaats.split()
+                if len(plaats_parts) > 1:
+                    # Skip first part (postcode), take rest as gemeente
+                    gemeente = ' '.join(plaats_parts[1:])
+                else:
+                    # If no postcode, use whole string as gemeente
+                    gemeente = plaats
+            
+            # Get vertrek time (levertijd for online orders, or empty for local)
+            vertrek = ""
+            if online_order_data:
+                vertrek = online_order_data.get('levertijd', '')
+            
+            # Format totaal
+            totaal_str = f"€ {order['totaal']:,.2f}".replace(',', ' ').replace('.', ',')
+            
+            # Get koerier name (already extracted above)
+            koerier_display = koerier_naam if koerier_naam else ""
             
             self.tree.insert(
                 "",
                 tk.END,
                 iid=order['id'],
                 values=(
-                    order['tijd'],
-                    order['straat'],
-                    order['huisnummer'],
-                    order['plaats'],
-                    order['telefoon'],
-                    f"{order['totaal']:.2f}",
-                    koerier_cell
+                    soort,
+                    nummer,
+                    totaal_str,
+                    order.get('straat', ''),
+                    order.get('huisnummer', ''),
+                    gemeente,
+                    order.get('tijd', ''),
+                    vertrek,
+                    betaalmethode,
+                    koerier_display
                 ),
                 tags=tags
             )
         
-        # Recalculate totals
-        self.recalculate_courier_totals()
-        self.recalculate_total_payment()
+        # Recalculate totals (if settlement frame exists)
+        if hasattr(self, 'totals_var') and self.totals_var:
+            self.recalculate_courier_totals()
+            self.recalculate_total_payment()
     
     def recalculate_courier_totals(self) -> None:
         """Recalculate totals for each courier."""
+        if not hasattr(self, 'totals_var') or not self.totals_var:
+            return
+            
         # Reset totals
         for naam in self.courier_names:
             self.totals_var[naam].set(0.0)
         
         total_orders = 0.0
         
-        # Calculate from tree
-        for item_id in self.tree.get_children():
-            values = self.tree.item(item_id, "values")
-            try:
-                bedrag = float(values[5])
-                koerier_naam = values[6]
-                total_orders += bedrag
-                
-                if koerier_naam and koerier_naam != "(geen)" and koerier_naam in self.totals_var:
-                    self.totals_var[koerier_naam].set(
-                        self.totals_var[koerier_naam].get() + bedrag
-                    )
-            except (ValueError, IndexError):
-                continue
+        # Get date for filtering
+        datum_str = self.filter_vars.get("datum", tk.StringVar(value=date.today().strftime('%Y-%m-%d'))).get()
+        try:
+            order_date = datetime.strptime(datum_str, '%Y-%m-%d').date()
+        except ValueError:
+            order_date = date.today()
         
-        self.subtotaal_totaal_var.set(round(total_orders, 2))
+        # Get local orders from database (exclude afhaal orders)
+        try:
+            local_orders = self.service.get_orders_for_date(order_date, exclude_afhaal=True)
+            # Group by courier
+            courier_totals = {naam: 0.0 for naam in self.courier_names}
+            
+            for order in local_orders:
+                koerier_naam = order.get('koerier_naam')
+                if koerier_naam and koerier_naam in courier_totals:
+                    courier_totals[koerier_naam] += float(order.get('totaal', 0))
+                    total_orders += float(order.get('totaal', 0))
+        except Exception as e:
+            logger.warning(f"Error calculating local order totals: {e}")
         
-        # Calculate final totals
+        # Get online orders from API
+        try:
+            online_orders = self.fetch_online_orders(order_date)
+            for online_order in online_orders:
+                koerier_id = online_order.get('koerier_id')
+                if koerier_id:
+                    koerier_naam = self.get_courier_name_by_id(koerier_id)
+                    if koerier_naam and koerier_naam in courier_totals:
+                        courier_totals[koerier_naam] += float(online_order.get('totaal', 0))
+                        total_orders += float(online_order.get('totaal', 0))
+        except Exception as e:
+            logger.warning(f"Error calculating online order totals: {e}")
+        
+        # Update totals variables
+        for naam, totaal in courier_totals.items():
+            if naam in self.totals_var:
+                self.totals_var[naam].set(round(totaal, 2))
+        
+        if hasattr(self, 'subtotaal_totaal_var') and self.subtotaal_totaal_var:
+            self.subtotaal_totaal_var.set(round(total_orders, 2))
+        
+        # Calculate final totals and payments
         for naam in self.courier_names:
-            subtotal = self.totals_var[naam].get()
-            self.eind_totals_var[naam].set(
-                self.service.calculate_final_total(subtotal)
-            )
+            if naam in self.totals_var:
+                subtotal = self.totals_var[naam].get()
+                if hasattr(self, 'eind_totals_var') and naam in self.eind_totals_var:
+                    self.eind_totals_var[naam].set(
+                        self.service.calculate_final_total(subtotal)
+                    )
+                # Recalculate payment
+                self.recalculate_payment(naam)
+        
+        # Recalculate total payment
+        self.recalculate_total_payment()
     
     def recalculate_payment(self, naam: str) -> None:
         """Recalculate payment for a specific courier."""
+        if not hasattr(self, 'totals_var') or naam not in self.totals_var:
+            return
         try:
             subtotal = self.totals_var[naam].get()
-            km = self.extra_km_var[naam].get()
-            uur = self.extra_uur_var[naam].get()
-            extra = self.extra_bedrag_var[naam].get()
+            km = self.extra_km_var[naam].get() if hasattr(self, 'extra_km_var') and naam in self.extra_km_var else 0.0
+            uur = self.extra_uur_var[naam].get() if hasattr(self, 'extra_uur_var') and naam in self.extra_uur_var else 0.0
+            extra = self.extra_bedrag_var[naam].get() if hasattr(self, 'extra_bedrag_var') and naam in self.extra_bedrag_var else 0.0
             
             payment = self.service.calculate_payment(subtotal, km, uur, extra)
-            self.afrekening_var[naam].set(payment)
+            if hasattr(self, 'afrekening_var') and naam in self.afrekening_var:
+                self.afrekening_var[naam].set(payment)
         except Exception:
-            self.afrekening_var[naam].set(0.0)
+            if hasattr(self, 'afrekening_var') and naam in self.afrekening_var:
+                self.afrekening_var[naam].set(0.0)
     
     def recalculate_total_payment(self) -> None:
         """Recalculate total payment to all couriers."""
-        total = sum(self.afrekening_var[naam].get() for naam in self.courier_names)
-        self.totaal_betaald_var.set(round(total, 2))
+        if not hasattr(self, 'afrekening_var'):
+            return
+        total = sum(self.afrekening_var[naam].get() for naam in self.courier_names if naam in self.afrekening_var)
+        if hasattr(self, 'totaal_betaald_var') and self.totaal_betaald_var:
+            self.totaal_betaald_var.set(round(total, 2))
     
     def add_courier(self) -> None:
         """Add a new courier."""
@@ -485,6 +991,8 @@ class CourierManager:
             self.new_koerier_entry.delete(0, tk.END)
             self.load_couriers()
             self.setup_ui()  # Rebuild UI with new courier
+            # Recreate courier buttons
+            self.setup_courier_buttons()
         except DatabaseError as e:
             messagebox.showerror("Fout", str(e))
     
@@ -507,6 +1015,8 @@ class CourierManager:
             messagebox.showinfo("Succes", f"Koerier '{naam}' is verwijderd.")
             self.load_couriers()
             self.setup_ui()  # Rebuild UI without deleted courier
+            # Recreate courier buttons
+            self.setup_courier_buttons()
         except DatabaseError as e:
             messagebox.showerror("Fout", str(e))
     
@@ -522,12 +1032,125 @@ class CourierManager:
             return
         
         try:
-            order_ids = [int(item_id) for item_id in selected]
-            self.service.assign_courier_to_orders(order_ids, koerier_id)
+            # Separate online and local orders
+            online_order_ids = []
+            local_order_ids = []
+            
+            for item_id in selected:
+                if isinstance(item_id, str) and item_id.startswith("online_"):
+                    # Online order
+                    order_id = int(item_id.replace("online_", ""))
+                    online_order_ids.append(order_id)
+                else:
+                    # Local order
+                    local_order_ids.append(int(item_id))
+            
+            # Assign local orders
+            if local_order_ids:
+                self.service.assign_courier_to_orders(local_order_ids, koerier_id)
+            
+            # Assign online orders via API
+            if online_order_ids:
+                self.assign_online_orders(online_order_ids, koerier_id)
+            
             self.load_orders(force=True)
         except (ValueError, DatabaseError) as e:
             logger.exception("Error assigning courier")
             messagebox.showerror("Fout", f"Kon koerier niet toewijzen: {e}")
+    
+    def fetch_online_orders(self, order_date: date) -> List[Dict]:
+        """Fetch online orders from API for a specific date."""
+        try:
+            # Authenticate if needed
+            if not self.api_token:
+                self.authenticate_api()
+            
+            if not self.api_token:
+                return []
+            
+            # Fetch all pending online orders
+            response = self.api_session.get(
+                f"{self.api_base_url}/orders/online/pending"
+            )
+            
+            if response.status_code == 200:
+                orders = response.json()
+                # Filter by date
+                filtered_orders = []
+                for order in orders:
+                    order_datum = order.get('datum', '')
+                    if order_datum == order_date.strftime('%Y-%m-%d'):
+                        filtered_orders.append(order)
+                return filtered_orders
+            elif response.status_code == 401:
+                # Re-authenticate
+                if self.authenticate_api():
+                    response = self.api_session.get(
+                        f"{self.api_base_url}/orders/online/pending"
+                    )
+                    if response.status_code == 200:
+                        orders = response.json()
+                        filtered_orders = []
+                        for order in orders:
+                            order_datum = order.get('datum', '')
+                            if order_datum == order_date.strftime('%Y-%m-%d'):
+                                filtered_orders.append(order)
+                        return filtered_orders
+            return []
+        except Exception as e:
+            logger.error(f"Error fetching online orders: {e}")
+            return []
+    
+    def authenticate_api(self) -> bool:
+        """Authenticate with the API and get token."""
+        try:
+            response = self.api_session.post(
+                f"{self.api_base_url}/auth/login",
+                data={
+                    "username": "admin",
+                    "password": "admin123"
+                },
+                headers={"Content-Type": "application/x-www-form-urlencoded"}
+            )
+            if response.status_code == 200:
+                data = response.json()
+                self.api_token = data.get("access_token")
+                if self.api_token:
+                    self.api_session.headers.update({
+                        "Authorization": f"Bearer {self.api_token}"
+                    })
+                    logger.info("API authentication successful")
+                    return True
+            return False
+        except Exception as e:
+            logger.error(f"Error authenticating with API: {e}")
+            return False
+    
+    def assign_online_orders(self, order_ids: List[int], koerier_id: int) -> None:
+        """Assign online orders to a courier via API."""
+        try:
+            for order_id in order_ids:
+                response = self.api_session.put(
+                    f"{self.api_base_url}/orders/{order_id}/status",
+                    json={
+                        "new_status": "Onderweg",  # Set status to Onderweg when assigning courier
+                        "koerier_id": koerier_id
+                    }
+                )
+                if response.status_code != 200:
+                    logger.warning(f"Failed to assign courier to online order {order_id}: {response.status_code}")
+        except Exception as e:
+            logger.error(f"Error assigning online orders: {e}")
+            raise
+    
+    def get_courier_name_by_id(self, koerier_id: Optional[int]) -> Optional[str]:
+        """Get courier name by ID."""
+        if koerier_id is None:
+            return None
+        for naam, cid in self.courier_data.items():
+            if cid == koerier_id:
+                return naam
+        return None
     
     def remove_assignment(self) -> None:
         """Remove courier assignment from selected orders."""

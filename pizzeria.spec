@@ -41,6 +41,8 @@ hiddenimports = [
     'tkinter.messagebox',
     'tkinter.simpledialog',
     'tkinter.scrolledtext',
+    'phonenumbers',  # Phone number validation for EU countries
+    'phonenumbers.data',  # Phone number metadata
 ]
 
 # Analysis phase

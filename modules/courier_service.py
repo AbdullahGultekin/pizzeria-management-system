@@ -92,12 +92,14 @@ class CourierService:
             raise DatabaseError(f"Kon koerier niet verwijderen: {e}") from e
     
     @staticmethod
-    def get_orders_for_date(order_date: date) -> List[Dict]:
+    def get_orders_for_date(order_date: date, exclude_afhaal: bool = True, only_without_courier: bool = False) -> List[Dict]:
         """
         Get all orders for a specific date.
         
         Args:
             order_date: Date to get orders for
+            exclude_afhaal: If True, exclude pickup orders (default: True for courier page)
+            only_without_courier: If True, only return orders without assigned courier
             
         Returns:
             List of order dictionaries with customer and courier information
@@ -105,7 +107,24 @@ class CourierService:
         try:
             with DatabaseContext() as conn:
                 cursor = conn.cursor()
-                query = """
+                # Check if afhaal column exists
+                cursor.execute("PRAGMA table_info(bestellingen)")
+                columns = [row[1] for row in cursor.fetchall()]
+                has_afhaal = 'afhaal' in columns
+                
+                # Build query with filters
+                conditions = ["b.datum = ?"]
+                params = [order_date.strftime('%Y-%m-%d')]
+                
+                if exclude_afhaal and has_afhaal:
+                    conditions.append("(b.afhaal IS NULL OR b.afhaal = 0)")
+                
+                if only_without_courier:
+                    conditions.append("b.koerier_id IS NULL")
+                
+                where_clause = " AND ".join(conditions)
+                
+                query = f"""
                     SELECT b.id,
                            b.totaal,
                            b.tijd,
@@ -113,14 +132,15 @@ class CourierService:
                            k.huisnummer,
                            k.plaats,
                            k.telefoon,
-                           ko.naam AS koerier_naam
+                           ko.naam AS koerier_naam,
+                           b.afhaal
                     FROM bestellingen b
                     JOIN klanten k ON b.klant_id = k.id
                     LEFT JOIN koeriers ko ON b.koerier_id = ko.id
-                    WHERE b.datum = ?
+                    WHERE {where_clause}
                     ORDER BY b.tijd
                 """
-                cursor.execute(query, (order_date.strftime('%Y-%m-%d'),))
+                cursor.execute(query, tuple(params))
                 return [dict(row) for row in cursor.fetchall()]
         except sqlite3.Error as e:
             logger.exception(f"Error fetching orders: {e}")

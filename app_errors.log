@@ -14,3 +14,152 @@ sqlite3.OperationalError: database is locked
     ~~~~~~~~~~~^^
 sqlite3.OperationalError: database is locked
 
+2025-11-20 22:22:45 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:215 - API authentication failed: 401
+2025-11-20 22:22:45 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:230 - Failed to fetch orders: 401
+2025-11-20 22:22:52 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:230 - Failed to fetch orders: 401
+2025-11-20 22:22:57 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:230 - Failed to fetch orders: 401
+2025-11-20 22:22:59 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:230 - Failed to fetch orders: 401
+2025-11-20 22:23:08 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:230 - Failed to fetch orders: 401
+2025-11-20 22:23:15 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:230 - Failed to fetch orders: 401
+2025-11-20 22:23:22 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:230 - Failed to fetch orders: 401
+2025-11-20 22:23:29 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:230 - Failed to fetch orders: 401
+2025-11-20 22:23:36 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:230 - Failed to fetch orders: 401
+2025-11-20 22:23:43 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:230 - Failed to fetch orders: 401
+2025-11-20 22:23:50 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:230 - Failed to fetch orders: 401
+2025-11-20 22:23:57 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:230 - Failed to fetch orders: 401
+2025-11-20 22:24:04 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:230 - Failed to fetch orders: 401
+2025-11-20 22:24:11 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:230 - Failed to fetch orders: 401
+2025-11-20 22:24:18 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:230 - Failed to fetch orders: 401
+2025-11-20 22:24:25 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:230 - Failed to fetch orders: 401
+2025-11-20 22:24:32 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:230 - Failed to fetch orders: 401
+2025-11-20 22:24:39 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:230 - Failed to fetch orders: 401
+2025-11-20 22:24:46 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:230 - Failed to fetch orders: 401
+2025-11-20 22:24:53 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:230 - Failed to fetch orders: 401
+2025-11-20 22:25:00 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:230 - Failed to fetch orders: 401
+2025-11-20 22:25:07 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:230 - Failed to fetch orders: 401
+2025-11-20 22:25:14 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:230 - Failed to fetch orders: 401
+2025-11-20 22:25:22 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:230 - Failed to fetch orders: 401
+2025-11-20 22:25:25 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:230 - Failed to fetch orders: 401
+2025-11-20 22:25:26 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:230 - Failed to fetch orders: 401
+2025-11-20 22:25:29 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:230 - Failed to fetch orders: 401
+2025-11-20 22:25:36 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:230 - Failed to fetch orders: 401
+2025-11-20 22:25:43 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:230 - Failed to fetch orders: 401
+2025-11-20 22:25:50 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:230 - Failed to fetch orders: 401
+2025-11-20 22:25:57 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:230 - Failed to fetch orders: 401
+2025-11-20 22:26:04 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:230 - Failed to fetch orders: 401
+2025-11-20 22:26:11 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:230 - Failed to fetch orders: 401
+2025-11-20 22:26:18 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:230 - Failed to fetch orders: 401
+2025-11-20 22:26:25 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:230 - Failed to fetch orders: 401
+2025-11-20 22:26:32 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:230 - Failed to fetch orders: 401
+2025-11-20 22:26:39 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:230 - Failed to fetch orders: 401
+2025-11-20 22:26:46 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:230 - Failed to fetch orders: 401
+2025-11-20 22:26:53 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:230 - Failed to fetch orders: 401
+2025-11-20 22:27:00 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:230 - Failed to fetch orders: 401
+2025-11-20 22:27:07 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:230 - Failed to fetch orders: 401
+2025-11-20 22:27:14 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:230 - Failed to fetch orders: 401
+2025-11-20 22:27:21 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:230 - Failed to fetch orders: 401
+2025-11-20 22:27:28 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:230 - Failed to fetch orders: 401
+2025-11-20 22:27:35 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:230 - Failed to fetch orders: 401
+2025-11-20 22:27:42 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:230 - Failed to fetch orders: 401
+2025-11-20 22:27:49 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:230 - Failed to fetch orders: 401
+2025-11-20 22:28:00 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:250 - Failed to fetch orders: 500 - Internal Server Error
+2025-11-20 22:28:07 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:250 - Failed to fetch orders: 500 - Internal Server Error
+2025-11-20 22:28:14 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:250 - Failed to fetch orders: 500 - Internal Server Error
+2025-11-20 22:28:21 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:250 - Failed to fetch orders: 500 - Internal Server Error
+2025-11-20 22:28:28 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:250 - Failed to fetch orders: 500 - Internal Server Error
+2025-11-20 22:28:35 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:250 - Failed to fetch orders: 500 - Internal Server Error
+2025-11-20 22:28:42 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:250 - Failed to fetch orders: 500 - Internal Server Error
+2025-11-20 22:28:49 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:250 - Failed to fetch orders: 500 - Internal Server Error
+2025-11-20 22:28:57 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:250 - Failed to fetch orders: 500 - Internal Server Error
+2025-11-20 22:29:04 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:250 - Failed to fetch orders: 500 - Internal Server Error
+2025-11-20 22:29:11 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:250 - Failed to fetch orders: 500 - Internal Server Error
+2025-11-20 22:29:18 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:250 - Failed to fetch orders: 500 - Internal Server Error
+2025-11-20 22:29:25 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:250 - Failed to fetch orders: 500 - Internal Server Error
+2025-11-20 22:29:32 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:250 - Failed to fetch orders: 500 - Internal Server Error
+2025-11-20 22:29:39 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:250 - Failed to fetch orders: 500 - Internal Server Error
+2025-11-20 22:29:39 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:250 - Failed to fetch orders: 500 - Internal Server Error
+2025-11-20 22:29:39 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:250 - Failed to fetch orders: 500 - Internal Server Error
+2025-11-20 22:29:46 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:250 - Failed to fetch orders: 500 - Internal Server Error
+2025-11-20 22:29:53 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:250 - Failed to fetch orders: 500 - Internal Server Error
+2025-11-20 22:30:00 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:250 - Failed to fetch orders: 500 - Internal Server Error
+2025-11-20 22:30:07 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:250 - Failed to fetch orders: 500 - Internal Server Error
+2025-11-20 22:30:14 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:250 - Failed to fetch orders: 500 - Internal Server Error
+2025-11-20 22:30:21 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:250 - Failed to fetch orders: 500 - Internal Server Error
+2025-11-20 22:30:28 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:250 - Failed to fetch orders: 500 - Internal Server Error
+2025-11-20 22:30:35 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:250 - Failed to fetch orders: 500 - Internal Server Error
+2025-11-20 22:30:42 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:250 - Failed to fetch orders: 500 - Internal Server Error
+2025-11-20 22:30:49 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:250 - Failed to fetch orders: 500 - Internal Server Error
+2025-11-20 22:30:56 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:250 - Failed to fetch orders: 500 - Internal Server Error
+2025-11-20 22:31:03 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:250 - Failed to fetch orders: 500 - Internal Server Error
+2025-11-20 22:31:10 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:250 - Failed to fetch orders: 500 - Internal Server Error
+2025-11-20 22:31:17 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:250 - Failed to fetch orders: 500 - Internal Server Error
+2025-11-20 22:31:24 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:250 - Failed to fetch orders: 500 - Internal Server Error
+2025-11-21 14:13:58 - pizzeria.koeriers - ERROR - koeriers.py:291 - Error printing totals
+Traceback (most recent call last):
+  File "/Users/abdullahgultekin/Cursor projects/Deskcomputer/modules/koeriers.py", line 232, in print_totals
+    from bon_generator import print_text
+ImportError: cannot import name 'print_text' from 'bon_generator' (/Users/abdullahgultekin/Cursor projects/Deskcomputer/bon_generator.py)
+2025-11-21 14:14:07 - pizzeria.koeriers - ERROR - koeriers.py:291 - Error printing totals
+Traceback (most recent call last):
+  File "/Users/abdullahgultekin/Cursor projects/Deskcomputer/modules/koeriers.py", line 232, in print_totals
+    from bon_generator import print_text
+ImportError: cannot import name 'print_text' from 'bon_generator' (/Users/abdullahgultekin/Cursor projects/Deskcomputer/bon_generator.py)
+2025-11-22 14:05:59 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:288 - Error authenticating with API: HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/v1/auth/login (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x11f9f1a90>: Failed to establish a new connection: [Errno 61] Connection refused'))
+2025-11-22 14:05:59 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:315 - Connection error - is backend running? HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/v1/orders/online/pending (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x11fa56c10>: Failed to establish a new connection: [Errno 61] Connection refused'))
+2025-11-22 14:06:00 - pizzeria.koeriers - ERROR - koeriers.py:1101 - Error authenticating with API: HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/v1/auth/login (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x11fa8c190>: Failed to establish a new connection: [Errno 61] Connection refused'))
+2025-11-22 14:06:00 - pizzeria.koeriers - ERROR - koeriers.py:1101 - Error authenticating with API: HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/v1/auth/login (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x11fa6ce90>: Failed to establish a new connection: [Errno 61] Connection refused'))
+2025-11-22 14:06:00 - pizzeria.koeriers - ERROR - koeriers.py:1101 - Error authenticating with API: HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/v1/auth/login (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x11fa6d220>: Failed to establish a new connection: [Errno 61] Connection refused'))
+2025-11-22 14:06:06 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:315 - Connection error - is backend running? HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/v1/orders/online/pending (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x10fd17bf0>: Failed to establish a new connection: [Errno 61] Connection refused'))
+2025-11-22 14:25:38 - pizzeria.ui.tab_manager - ERROR - tab_manager.py:61 - Error loading tab Afhaal: bad anchor "right": must be n, ne, e, se, s, sw, w, nw, or center
+Traceback (most recent call last):
+  File "/Users/abdullahgultekin/Cursor projects/Deskcomputer/ui/tab_manager.py", line 56, in load_tab_content
+    callback(parent)
+    ~~~~~~~~^^^^^^^^
+  File "/Users/abdullahgultekin/Cursor projects/Deskcomputer/app.py", line 1717, in <lambda>
+    "Afhaal": lambda parent: open_afhaal(parent),
+                             ~~~~~~~~~~~^^^^^^^^
+  File "/Users/abdullahgultekin/Cursor projects/Deskcomputer/modules/afhaal.py", line 251, in open_afhaal
+    manager = AfhaalManager(parent)
+  File "/Users/abdullahgultekin/Cursor projects/Deskcomputer/modules/afhaal.py", line 32, in __init__
+    self.setup_ui()
+    ~~~~~~~~~~~~~^^
+  File "/Users/abdullahgultekin/Cursor projects/Deskcomputer/modules/afhaal.py", line 82, in setup_ui
+    self.setup_table(table_frame)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/abdullahgultekin/Cursor projects/Deskcomputer/modules/afhaal.py", line 125, in setup_table
+    self.tree.column("Totaal", width=80, anchor=tk.RIGHT)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/tkinter/ttk.py", line 1225, in column
+    return _val_or_dict(self.tk, kw, self._w, "column", column)
+  File "/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/tkinter/ttk.py", line 288, in _val_or_dict
+    res = tk.call(*(args + options))
+_tkinter.TclError: bad anchor "right": must be n, ne, e, se, s, sw, w, nw, or center
+2025-11-22 14:25:40 - pizzeria.koeriers - ERROR - koeriers.py:1126 - Error authenticating with API: HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/v1/auth/login (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x11e6f6510>: Failed to establish a new connection: [Errno 61] Connection refused'))
+2025-11-22 14:25:40 - pizzeria.koeriers - ERROR - koeriers.py:1126 - Error authenticating with API: HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/v1/auth/login (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x11e75f750>: Failed to establish a new connection: [Errno 61] Connection refused'))
+2025-11-22 14:25:40 - pizzeria.koeriers - ERROR - koeriers.py:1126 - Error authenticating with API: HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/v1/auth/login (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x11e75fc50>: Failed to establish a new connection: [Errno 61] Connection refused'))
+2025-11-22 14:25:41 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:288 - Error authenticating with API: HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/v1/auth/login (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x11e6fdba0>: Failed to establish a new connection: [Errno 61] Connection refused'))
+2025-11-22 14:25:41 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:315 - Connection error - is backend running? HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/v1/orders/online/pending (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x11e6fdf30>: Failed to establish a new connection: [Errno 61] Connection refused'))
+2025-11-22 14:27:21 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:288 - Error authenticating with API: HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/v1/auth/login (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x121255d30>: Failed to establish a new connection: [Errno 61] Connection refused'))
+2025-11-22 14:27:21 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:315 - Connection error - is backend running? HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/v1/orders/online/pending (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x12126b110>: Failed to establish a new connection: [Errno 61] Connection refused'))
+2025-11-22 14:27:23 - pizzeria.koeriers - ERROR - koeriers.py:1126 - Error authenticating with API: HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/v1/auth/login (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x12126c690>: Failed to establish a new connection: [Errno 61] Connection refused'))
+2025-11-22 14:27:23 - pizzeria.koeriers - ERROR - koeriers.py:1126 - Error authenticating with API: HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/v1/auth/login (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x12124d350>: Failed to establish a new connection: [Errno 61] Connection refused'))
+2025-11-22 14:27:23 - pizzeria.koeriers - ERROR - koeriers.py:1126 - Error authenticating with API: HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/v1/auth/login (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x12124d6e0>: Failed to establish a new connection: [Errno 61] Connection refused'))
+2025-11-22 14:27:28 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:315 - Connection error - is backend running? HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/v1/orders/online/pending (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x121240170>: Failed to establish a new connection: [Errno 61] Connection refused'))
+2025-11-22 14:27:35 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:315 - Connection error - is backend running? HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/v1/orders/online/pending (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x1212846b0>: Failed to establish a new connection: [Errno 61] Connection refused'))
+2025-11-22 14:27:44 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:315 - Connection error - is backend running? HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/v1/orders/online/pending (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x121284af0>: Failed to establish a new connection: [Errno 61] Connection refused'))
+2025-11-22 14:27:45 - pizzeria.koeriers - ERROR - koeriers.py:1126 - Error authenticating with API: HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/v1/auth/login (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x121284d10>: Failed to establish a new connection: [Errno 61] Connection refused'))
+2025-11-22 14:27:46 - pizzeria.koeriers - ERROR - koeriers.py:1126 - Error authenticating with API: HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/v1/auth/login (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x121285040>: Failed to establish a new connection: [Errno 61] Connection refused'))
+2025-11-22 14:27:46 - pizzeria.koeriers - ERROR - koeriers.py:1126 - Error authenticating with API: HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/v1/auth/login (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x1103b3f00>: Failed to establish a new connection: [Errno 61] Connection refused'))
+2025-11-22 14:27:46 - pizzeria.koeriers - ERROR - koeriers.py:1126 - Error authenticating with API: HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/v1/auth/login (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x1103b3bd0>: Failed to establish a new connection: [Errno 61] Connection refused'))
+2025-11-22 14:27:46 - pizzeria.koeriers - ERROR - koeriers.py:1126 - Error authenticating with API: HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/v1/auth/login (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x1103b2be0>: Failed to establish a new connection: [Errno 61] Connection refused'))
+2025-11-22 14:27:46 - pizzeria.koeriers - ERROR - koeriers.py:1126 - Error authenticating with API: HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/v1/auth/login (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x1103b2ad0>: Failed to establish a new connection: [Errno 61] Connection refused'))
+2025-11-22 14:27:47 - pizzeria.koeriers - ERROR - koeriers.py:1126 - Error authenticating with API: HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/v1/auth/login (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x12129c050>: Failed to establish a new connection: [Errno 61] Connection refused'))
+2025-11-22 14:27:47 - pizzeria.koeriers - ERROR - koeriers.py:1126 - Error authenticating with API: HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/v1/auth/login (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x12129c380>: Failed to establish a new connection: [Errno 61] Connection refused'))
+2025-11-22 14:27:47 - pizzeria.koeriers - ERROR - koeriers.py:1126 - Error authenticating with API: HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/v1/auth/login (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x12129c6b0>: Failed to establish a new connection: [Errno 61] Connection refused'))
+2025-11-22 14:27:48 - pizzeria.koeriers - ERROR - koeriers.py:1126 - Error authenticating with API: HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/v1/auth/login (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x12129c9e0>: Failed to establish a new connection: [Errno 61] Connection refused'))
+2025-11-22 14:27:48 - pizzeria.koeriers - ERROR - koeriers.py:1126 - Error authenticating with API: HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/v1/auth/login (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x12129cd10>: Failed to establish a new connection: [Errno 61] Connection refused'))
+2025-11-22 14:27:48 - pizzeria.koeriers - ERROR - koeriers.py:1126 - Error authenticating with API: HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/v1/auth/login (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x12129d040>: Failed to establish a new connection: [Errno 61] Connection refused'))
+2025-11-22 14:27:48 - pizzeria.koeriers - ERROR - koeriers.py:1126 - Error authenticating with API: HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/v1/auth/login (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x12129d370>: Failed to establish a new connection: [Errno 61] Connection refused'))
+2025-11-22 14:27:48 - pizzeria.koeriers - ERROR - koeriers.py:1126 - Error authenticating with API: HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/v1/auth/login (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x12129d6a0>: Failed to establish a new connection: [Errno 61] Connection refused'))
+2025-11-22 14:27:48 - pizzeria.koeriers - ERROR - koeriers.py:1126 - Error authenticating with API: HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/v1/auth/login (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x12129d9d0>: Failed to establish a new connection: [Errno 61] Connection refused'))
+2025-11-22 14:27:51 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:315 - Connection error - is backend running? HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/v1/orders/online/pending (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x12129dd00>: Failed to establish a new connection: [Errno 61] Connection refused'))

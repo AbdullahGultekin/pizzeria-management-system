@@ -2,6 +2,7 @@
 Pillow>=10.0.0,<11.0.0  # Image processing (PIL)
 qrcode[pil]>=7.4.0,<8.0.0  # QR code generation
 requests>=2.31.0  # HTTP requests (for Webex API integration)
+phonenumbers>=8.13.0  # Phone number validation for all EU countries (including landlines)
 
 # Windows-specific (optional, only needed on Windows)
 pywin32>=306; sys_platform == 'win32'  # Windows printer support

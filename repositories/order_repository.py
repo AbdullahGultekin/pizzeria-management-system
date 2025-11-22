@@ -21,7 +21,8 @@ class OrderRepository:
         opmerking: Optional[str],
         bonnummer: str,
         koerier_id: Optional[int] = None,
-        levertijd: Optional[str] = None
+        levertijd: Optional[str] = None,
+        afhaal: bool = False
     ) -> int:
         """
         Create a new order.
@@ -35,17 +36,31 @@ class OrderRepository:
             bonnummer: Receipt number
             koerier_id: Optional courier ID
             levertijd: Optional delivery time (e.g., "19:30")
+            afhaal: Whether this is a pickup order (default: False)
             
         Returns:
             Order ID
         """
         with DatabaseContext() as conn:
             cursor = conn.cursor()
-            cursor.execute(
-                "INSERT INTO bestellingen (klant_id, datum, tijd, totaal, opmerking, bonnummer, koerier_id, levertijd) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (klant_id, datum, tijd, totaal, opmerking, bonnummer, koerier_id, levertijd)
-            )
+            # Check if afhaal column exists
+            cursor.execute("PRAGMA table_info(bestellingen)")
+            columns = [row[1] for row in cursor.fetchall()]
+            has_afhaal = 'afhaal' in columns
+            
+            if has_afhaal:
+                cursor.execute(
+                    "INSERT INTO bestellingen (klant_id, datum, tijd, totaal, opmerking, bonnummer, koerier_id, levertijd, afhaal) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (klant_id, datum, tijd, totaal, opmerking, bonnummer, koerier_id, levertijd, 1 if afhaal else 0)
+                )
+            else:
+                # Fallback for older databases
+                cursor.execute(
+                    "INSERT INTO bestellingen (klant_id, datum, tijd, totaal, opmerking, bonnummer, koerier_id, levertijd) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (klant_id, datum, tijd, totaal, opmerking, bonnummer, koerier_id, levertijd)
+                )
             return cursor.lastrowid
     
     @staticmethod

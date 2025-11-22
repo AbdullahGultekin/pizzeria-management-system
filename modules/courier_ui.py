@@ -142,6 +142,8 @@ class CourierUI:
         tree.tag_configure("row_a", background=ROW_COLOR_A)
         tree.tag_configure("row_b", background=ROW_COLOR_B)
         tree.tag_configure("unassigned", background=UNASSIGNED_COLOR)
+        # Online orders styling (light blue background)
+        tree.tag_configure("online", background="#E3F2FD")  # Light blue for online orders
         
         # Configure courier-specific row colors
         for naam in self.courier_names:

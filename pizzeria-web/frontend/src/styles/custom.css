@@ -1,0 +1,582 @@
+/* Algemene instellingen */
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    background-color: #f9f9f9;
+    color: #333;
+}
+
+/* Moderne Header Styling */
+.navbar-light {
+    background: linear-gradient(to right, #fff 40%, #fff9f9);
+    padding: 15px 0;
+    box-shadow: 0 4px 30px rgba(229, 37, 37, 0.08);
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+    border-bottom: 3px solid transparent;
+    border-image: linear-gradient(to right, #e52525, #ff6b6b);
+    border-image-slice: 1;
+}
+
+.navbar-container {
+    max-width: 1300px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    padding: 0 30px;
+    gap: 30px;
+}
+
+.navbar-logo-link {
+    position: relative;
+    transition: transform 0.3s ease;
+}
+
+.navbar-logo-link:hover {
+    transform: scale(1.05);
+}
+
+.navbar-logo {
+    height: 70px;
+    border-radius: 15px;
+    box-shadow: 0 5px 15px rgba(229, 37, 37, 0.15);
+    transition: transform 0.3s ease;
+}
+
+.navbar-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.navbar-main {
+    display: flex;
+    align-items: baseline;
+    gap: 15px;
+}
+
+.navbar-title {
+    font-size: 2em;
+    font-weight: 800;
+    color: #e52525;
+    text-shadow: 2px 2px 4px rgba(229, 37, 37, 0.1);
+    letter-spacing: 0.5px;
+    font-family: 'Montserrat', sans-serif;
+}
+
+.navbar-address {
+    font-size: 1.1em;
+    color: #666;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.navbar-address::before {
+    content: '📍';
+    font-size: 1.2em;
+}
+
+.navbar-contact {
+    display: flex;
+    gap: 20px;
+    color: #666;
+    font-size: 1.05em;
+}
+
+.navbar-contact a {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    text-decoration: none;
+    color: inherit;
+    transition: color 0.3s ease;
+}
+
+.navbar-contact a:hover {
+    color: #e52525;
+}
+
+.navbar-contact i {
+    color: #e52525;
+    font-size: 1.2em;
+}
+
+.navbar-links {
+    margin-left: auto;
+}
+
+.navbar-links ul {
+    display: flex;
+    gap: 15px;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.navbar-links a {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    text-decoration: none;
+    color: #333;
+    font-weight: 600;
+    padding: 10px 20px;
+    border-radius: 25px;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+    border: 2px solid transparent;
+}
+
+.navbar-links a::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(45deg, #e52525, #ff6b6b);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    z-index: -1;
+    border-radius: inherit;
+}
+
+.navbar-links a:hover::before,
+.navbar-links a.active::before {
+    opacity: 1;
+}
+
+.navbar-links a:hover,
+.navbar-links a.active {
+    color: #fff;
+    transform: translateY(-2px);
+}
+
+.navbar-links a i {
+    font-size: 1.2em;
+}
+
+/* Layout structuur */
+.main-container {
+    display: flex;
+    gap: 30px;
+    max-width: 1400px;
+    margin: 30px auto;
+    padding: 0 20px;
+    position: relative;
+}
+
+/* Verbeterde Sidebar Styling */
+.sidebar {
+    flex: 0 0 220px;
+    margin: 0;
+    padding: 20px;
+    background: #fff;
+    border-radius: 20px;
+    box-shadow: 0 4px 25px rgba(229, 37, 37, 0.1);
+    height: fit-content;
+    position: sticky;
+    top: 100px;
+}
+
+.sidebar h2 {
+    color: #d32f2f;
+    font-size: 1.4em;
+    margin: 0 0 20px 0;
+    padding: 0 0 15px 0;
+    border-bottom: 2px solid #ffe6e6;
+    text-align: center;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.sidebar ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.sidebar li {
+    margin-bottom: 8px;
+}
+
+.sidebar li a {
+    display: flex;
+    align-items: center;
+    padding: 12px 18px;
+    color: #333;
+    text-decoration: none;
+    font-weight: 500;
+    border-radius: 15px;
+    transition: all 0.3s ease;
+    background: #fff;
+    border: 1px solid #ffe6e6;
+}
+
+.sidebar li a:before {
+    content: '🔸';
+    margin-right: 10px;
+    font-size: 0.9em;
+    transition: transform 0.3s ease;
+}
+
+.sidebar li a:hover {
+    background: linear-gradient(135deg, #e52525, #d32f2f);
+    color: #fff;
+    transform: translateX(5px);
+    border-color: transparent;
+}
+
+.sidebar li a:hover:before {
+    transform: rotate(90deg);
+    content: '🔹';
+}
+
+.sidebar li.active a {
+    background: linear-gradient(135deg, #e52525, #d32f2f);
+    color: #fff;
+    border-color: transparent;
+}
+
+/* Order Summary styling */
+.order-summary {
+    flex: 0 0 300px;
+    position: sticky;
+    top: 100px;
+    height: fit-content;
+    background: #fff;
+    border-radius: 20px;
+    box-shadow: 0 4px 25px rgba(229, 37, 37, 0.08);
+    display: flex;
+    flex-direction: column;
+}
+
+.order-summary h2 {
+    margin: 0;
+    padding: 20px;
+    background: #fff;
+    color: #e52525;
+    font-size: 1.4em;
+    text-align: center;
+    position: relative;
+    letter-spacing: 1px;
+    border-bottom: 2px solid #ffe6e6;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+}
+
+.order-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+}
+
+.order-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.order-list::-webkit-scrollbar {
+    width: 6px;
+}
+
+.order-list::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.order-list::-webkit-scrollbar-thumb {
+    background: #e52525;
+    border-radius: 3px;
+}
+
+.order-item {
+    background: #fff;
+    border-radius: 12px;
+    padding: 12px;
+    border: 1px solid #ffe6e6;
+    transition: all 0.3s ease;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+}
+
+.order-item:hover {
+    border-color: #e52525;
+    transform: translateX(3px);
+    box-shadow: 0 2px 8px rgba(229, 37, 37, 0.08);
+}
+
+.order-item-content {
+    flex: 1;
+}
+
+.order-item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 5px;
+}
+
+.order-item-name {
+    font-weight: 600;
+    color: #333;
+}
+
+.order-item-price {
+    color: #e52525;
+    font-weight: 600;
+}
+
+.order-footer {
+    background: #fff;
+    padding: 15px;
+    border-top: 1px solid #ffe6e6;
+    border-radius: 0 0 20px 20px;
+}
+
+.order-totals {
+    padding: 10px 0;
+}
+
+.order-line {
+    display: flex;
+    justify-content: space-between;
+    padding: 5px 0;
+    color: #666;
+}
+
+.order-line.total {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 2px solid #ffe6e6;
+    font-size: 1.2em;
+    color: #e52525;
+    font-weight: 700;
+}
+
+.order-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 15px;
+}
+
+.order-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px;
+    border-radius: 25px;
+    border: none;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.order-btn-checkout {
+    background: #e52525;
+    color: #fff;
+}
+
+.order-btn-checkout:hover {
+    background: #d32f2f;
+    transform: translateY(-2px);
+}
+
+.order-btn-clear {
+    background: #fff;
+    color: #e52525;
+    border: 1px solid #e52525;
+}
+
+.order-btn-clear:hover {
+    background: #fff5f5;
+}
+
+.remove-btn {
+    color: #e52525;
+    background: none;
+    border: none;
+    padding: 5px;
+    cursor: pointer;
+    opacity: 0.7;
+    transition: all 0.2s;
+}
+
+.remove-btn:hover {
+    opacity: 1;
+    transform: scale(1.1);
+}
+
+/* Product lijst styling */
+.product-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.product-list-item {
+    display: grid;
+    grid-template-columns: 44px 160px 1fr 100px 50px;
+    align-items: center;
+    gap: 0;
+    background: #fff;
+    border-radius: 10px;
+    margin-bottom: 8px;
+    padding: 7px 0;
+    box-shadow: 0 3px 14px -14px #b44;
+}
+
+.product-list-index {
+    color: #e52525;
+    font-weight: bold;
+    min-width: 32px;
+    text-align: center;
+}
+
+.product-list-name {
+    font-weight: 600;
+    min-width: 88px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 150px;
+}
+
+.product-list-desc {
+    color: #888;
+    font-size: 0.96em;
+    flex: 1;
+    min-width: 125px;
+    max-width: 375px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.product-list-price {
+    color: #d32f2f;
+    font-weight: bold;
+    min-width: 70px;
+    padding: 0 8px;
+    text-align: right;
+}
+
+.open-modal-btn {
+    background: #e52525;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    width: 32px;
+    height: 32px;
+    cursor: pointer;
+    font-size: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 40px;
+    text-align: center;
+}
+
+.open-modal-btn:hover {
+    background: #ffcc00;
+    color: #e52525;
+}
+
+/* Content area */
+.content {
+    flex: 1;
+    padding: 24px 0 0 0;
+    margin: 0;
+}
+
+/* Utilities */
+.hidden {
+    display: none !important;
+}
+
+/* Responsive Design */
+@media (max-width: 1200px) {
+    .main-container {
+        flex-direction: column;
+        padding: 0 15px;
+        gap: 20px;
+    }
+
+    .sidebar,
+    .order-summary {
+        position: static;
+        width: 100%;
+        max-width: none;
+        flex: none;
+        margin: 0;
+    }
+
+    .content {
+        order: 2;
+        width: 100%;
+    }
+
+    .sidebar {
+        order: 1;
+        margin-bottom: 20px;
+    }
+
+    .order-summary {
+        order: 3;
+        margin-top: 20px;
+    }
+}
+
+@media (max-width: 768px) {
+    .navbar-container {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .navbar-info {
+        align-items: flex-start;
+        margin: 8px 0;
+    }
+
+    .navbar-links ul {
+        justify-content: flex-start;
+        gap: 10px;
+    }
+
+    .navbar-logo {
+        height: 50px;
+    }
+
+    .main-container {
+        flex-direction: column;
+    }
+
+    .sidebar,
+    .order-summary {
+        width: 100%;
+        margin-bottom: 20px;
+        position: static;
+    }
+
+    .content {
+        padding: 10px;
+    }
+}
+
+

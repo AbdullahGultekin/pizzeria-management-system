@@ -1,0 +1,41 @@
+# FastAPI and server
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+python-multipart>=0.0.9
+
+# Database
+sqlalchemy>=2.0.30
+alembic>=1.13.0
+
+# Authentication & Security
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+
+# Validation
+pydantic>=2.9.0
+pydantic-settings>=2.5.0
+
+# Real-time
+websockets==12.0
+python-socketio==5.10.0
+
+# Rate limiting
+slowapi==0.1.9
+
+# Logging
+python-json-logger==2.0.7
+
+# Utilities
+python-dotenv==1.0.0
+httpx==0.25.2
+phonenumbers>=8.13.0  # Phone number validation for all countries
+email-validator>=2.0.0  # Enhanced email validation
+
+# Optional: Windows printer support
+pywin32>=306; sys_platform == 'win32'
+
+# Development
+pytest==7.4.3
+pytest-asyncio==0.21.1
+httpx==0.25.2
+

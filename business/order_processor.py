@@ -122,33 +122,41 @@ class OrderProcessor:
             Tuple of (success, bonnummer)
         """
         try:
+            # Get afhaal status
+            is_afhaal = klant_data.get('afhaal', False)
+            
             # Add new street name to straatnamen.json if it doesn't exist
-            adres = klant_data.get("adres", "").strip()
-            if adres:
-                from utils.address_utils import update_straatnamen_json
-                try:
-                    update_straatnamen_json(adres)
-                    logger.debug(f"Straatnaam '{adres}' toegevoegd aan straatnamen.json (indien nieuw)")
-                except Exception as e:
-                    logger.warning(f"Kon straatnaam niet toevoegen aan JSON: {e}")
+            # Only for delivery orders, not pickup orders
+            if not is_afhaal:
+                adres = klant_data.get("adres", "").strip()
+                if adres:
+                    from utils.address_utils import update_straatnamen_json
+                    try:
+                        update_straatnamen_json(adres)
+                        logger.debug(f"Straatnaam '{adres}' toegevoegd aan straatnamen.json (indien nieuw)")
+                    except Exception as e:
+                        logger.warning(f"Kon straatnaam niet toevoegen aan JSON: {e}")
             
             # Ensure customer exists
+            # For pickup orders, address fields can be empty
             self.customer_service.create_or_update_customer(
                 telefoon=klant_data["telefoon"],
-                straat=klant_data["adres"],
-                huisnummer=klant_data["nr"],
-                plaats=klant_data["postcode_gemeente"],
+                straat=klant_data.get("adres", "") if not is_afhaal else "",
+                huisnummer=klant_data.get("nr", "") if not is_afhaal else "",
+                plaats=klant_data.get("postcode_gemeente", "") if not is_afhaal else "",
                 naam=klant_data.get("naam", "")
             )
             
             # Create order
             korting_percentage = klant_data.get('korting_percentage', 0.0)
+            is_afhaal = klant_data.get('afhaal', False)
             success, bonnummer = self.order_service.create_order(
                 klant_telefoon=klant_data["telefoon"],
                 order_items=order_items,
                 opmerking=klant_data.get("opmerking"),
                 levertijd=klant_data.get("levertijd"),
-                korting_percentage=korting_percentage
+                korting_percentage=korting_percentage,
+                afhaal=is_afhaal
             )
             
             if success and show_confirmation:

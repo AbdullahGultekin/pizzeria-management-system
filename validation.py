@@ -6,18 +6,39 @@ from typing import Optional
 from logging_config import get_logger
 from exceptions import ValidationError
 
+# Import phone validator with fallback
+try:
+    # Try to import phonenumbers directly
+    import phonenumbers
+    from phonenumbers import NumberParseException, PhoneNumberFormat
+    PHONENUMBERS_AVAILABLE = True
+except ImportError:
+    PHONENUMBERS_AVAILABLE = False
+    phonenumbers = None
+    NumberParseException = Exception
+    PhoneNumberFormat = None
+
+# EU country codes for validation
+EU_COUNTRIES = [
+    'BE', 'NL', 'DE', 'FR', 'ES', 'IT', 'PT', 'AT', 'CH', 'LU',
+    'DK', 'SE', 'NO', 'FI', 'PL', 'CZ', 'SK', 'HU', 'RO', 'BG',
+    'GR', 'IE', 'GB', 'EE', 'LV', 'LT', 'SI', 'HR', 'CY', 'MT',
+]
+
 logger = get_logger("pizzeria.validation")
 
 
 def validate_phone(phone: str) -> str:
     """
-    Validate and normalize phone number.
+    Validate and normalize phone number for all EU countries (including landlines).
+    
+    Uses the phonenumbers library if available, otherwise falls back to basic validation.
     
     Args:
         phone: Phone number string
         
     Returns:
-        Normalized phone number
+        Normalized phone number in E.164 format (e.g., +32123456789)
         
     Raises:
         ValidationError: If phone number is invalid
@@ -25,14 +46,65 @@ def validate_phone(phone: str) -> str:
     if not phone or not phone.strip():
         raise ValidationError("Telefoonnummer is verplicht")
     
-    # Remove common separators
-    normalized = re.sub(r'[\s\-\(\)]', '', phone.strip())
+    phone = phone.strip()
     
-    # Basic validation - Belgian phone numbers
-    if not re.match(r'^(\+32|0)[1-9]\d{8}$', normalized):
-        raise ValidationError("Ongeldig telefoonnummer formaat")
+    # Use phonenumbers library if available
+    if PHONENUMBERS_AVAILABLE:
+        try:
+            # Try to parse with default region (Belgium) first
+            parsed_number = phonenumbers.parse(phone, 'BE')
+        except NumberParseException:
+            # Try parsing as international number
+            try:
+                parsed_number = phonenumbers.parse(phone, None)
+            except NumberParseException as e:
+                raise ValidationError("Ongeldig telefoonnummer formaat")
+        
+        # Check if number is valid
+        if not phonenumbers.is_valid_number(parsed_number):
+            region_code = phonenumbers.region_code_for_number(parsed_number)
+            if region_code:
+                raise ValidationError(f"Ongeldig telefoonnummer voor {region_code}")
+            raise ValidationError("Ongeldig telefoonnummer")
+        
+        # Check if number is from EU country
+        region_code = phonenumbers.region_code_for_number(parsed_number)
+        if region_code and region_code.upper() not in EU_COUNTRIES:
+            raise ValidationError(f"Alleen telefoonnummers uit EU-landen zijn toegestaan. Gevonden: {region_code}")
+        
+        # Normalize to E.164 format
+        normalized = phonenumbers.format_number(parsed_number, PhoneNumberFormat.E164)
+        return normalized
     
-    return normalized
+    # Fallback to basic validation (only Belgian numbers)
+    # This is used when phonenumbers library is not available
+    normalized = re.sub(r'[\s\-\(\)\-\.]', '', phone)
+    
+    # Basic validation - Belgian phone numbers (mobiel en vast)
+    # Belgische nummers: 0 gevolgd door 1-9, dan 8 meer cijfers = totaal 9 cijfers na 0
+    # Voorbeeld: 037757228 (vast), 0477123456 (mobiel)
+    belgian_pattern = r'^(\+32|0)[1-9]\d{8}$'
+    
+    if re.match(belgian_pattern, normalized):
+        # Convert to E.164 format if needed
+        if normalized.startswith('0'):
+            normalized = '+32' + normalized[1:]
+        return normalized
+    
+    # Also accept international format starting with +32 (already in E.164)
+    if normalized.startswith('+32') and len(normalized) == 12:  # +32 + 9 digits
+        return normalized
+    
+    # If we get here and phonenumbers is not available, show helpful error
+    if not PHONENUMBERS_AVAILABLE:
+        logger.warning(f"Phone validation failed for: {phone} (phonenumbers not available)")
+        raise ValidationError(
+            f"Ongeldig telefoonnummer formaat: '{phone}'. "
+            "Installeer 'phonenumbers' voor ondersteuning van alle EU-landen: pip install phonenumbers"
+        )
+    
+    # This should not be reached, but just in case
+    raise ValidationError(f"Ongeldig telefoonnummer formaat: '{phone}'")
 
 
 def validate_postcode(postcode: str, allowed_postcodes: list) -> str:

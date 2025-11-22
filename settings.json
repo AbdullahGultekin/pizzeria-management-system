@@ -83,5 +83,26 @@
       "Lams verdure",
       "Dello chef"
     ]
+  },
+  "customer_info": {
+    "message": "Beste klanten,\n\nVolg voor actuele informatie onze website www.pitapizzanapoli.be.\n\nMet vriendelijke groeten,\nPita Pizza Napoli"
+  },
+  "delivery_zones": {
+    "Zwijndrecht": 35.00,
+    "Nieuw-Namen": 30.00,
+    "Nieuwkerken-Waas": 15.00,
+    "Sint-Niklaas": 25.00,
+    "Beveren": 20.00,
+    "Vrasene": 15.00,
+    "Haasdonk": 25.00,
+    "Kallo": 25.00,
+    "Melsele": 25.00,
+    "Verrebroek": 15.00,
+    "Kieldrecht": 25.00,
+    "Doel": 35.00,
+    "Klein meerdonk": 25.00,
+    "Meerdonk": 25.00,
+    "Sint-Gillis-Waas": 25.00,
+    "De Klinge": 35.00
   }
 }

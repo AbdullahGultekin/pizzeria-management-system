@@ -4,73 +4,73 @@
       "id": 101,
       "naam": "Natuur",
       "prijs": 20.0,
-      "desc": ""
+      "desc": "Natuur"
     },
     {
       "id": 102,
       "naam": "Jonge Kaas",
       "prijs": 21.0,
-      "desc": ""
+      "desc": "Jonge kaas"
     },
     {
       "id": 103,
       "naam": "Feta",
       "prijs": 21.0,
-      "desc": ""
-    },
+      "desc": "Feta"
+    },  
     {
       "id": 104,
       "naam": "Champignons",
       "prijs": 21.0,
-      "desc": ""
+      "desc": "Champignons"
     },
     {
       "id": 105,
       "naam": "Pikant",
       "prijs": 21.0,
-      "desc": ""
+      "desc": "Pikante pepers"
     },
     {
       "id": 106,
       "naam": "Hawaï",
       "prijs": 21.0,
-      "desc": ""
+      "desc": "Ananas"
     },
     {
       "id": 107,
       "naam": "Maïs",
       "prijs": 21.0,
-      "desc": ""
+      "desc": "Ananas"
     },
     {
       "id": 108,
       "naam": "Special",
       "prijs": 22.0,
-      "desc": ""
+      "desc": "Paprika en Ui"
     },
     {
       "id": 109,
       "naam": "Mexicano",
       "prijs": 22.0,
-      "desc": ""
+      "desc": "Paprika en Mais"
     },
     {
       "id": 110,
       "naam": "Tropical",
       "prijs": 22.0,
-      "desc": ""
+      "desc": "Ananas en Mais"
     },
     {
       "id": 111,
       "naam": "Vrasene Special",
       "prijs": 24.0,
-      "desc": ""
+      "desc": "Paprika, ui, mais en feta"
     },
     {
       "id": 112,
       "naam": "Chef Special",
       "prijs": 24.0,
-      "desc": ""
+      "desc": "Paprika, ui, champignons en feta"
     }
   ],
   "grote-broodjes": [
@@ -78,73 +78,73 @@
       "id": 201,
       "naam": "Natuur",
       "prijs": 11,
-      "desc": ""
+      "desc": "Natuur"
     },
     {
       "id": 202,
       "naam": "Jonge Kaas",
       "prijs": 12,
-      "desc": ""
+      "desc": "Jonke kaas"
     },
     {
       "id": 203,
       "naam": "Feta",
       "prijs": 12,
-      "desc": ""
+      "desc": "Feta"
     },
     {
       "id": 204,
       "naam": "Champignons",
       "prijs": 12,
-      "desc": ""
+      "desc": "Champignons"
     },
     {
       "id": 205,
       "naam": "Pikant",
       "prijs": 12,
-      "desc": ""
+      "desc": "Pikante pepers"
     },
     {
       "id": 206,
       "naam": "Hawaï",
       "prijs": 12,
-      "desc": ""
+      "desc": "Ananas"
     },
     {
       "id": 207,
       "naam": "Maïs",
       "prijs": 12,
-      "desc": ""
+      "desc": "Mais"
     },
     {
       "id": 208,
       "naam": "Special",
       "prijs": 13,
-      "desc": ""
+      "desc": "Paprika en Ui"
     },
     {
       "id": 209,
       "naam": "Mexicano",
       "prijs": 13,
-      "desc": ""
+      "desc": "Paprika en Mais"
     },
     {
       "id": 210,
       "naam": "Tropical",
       "prijs": 13,
-      "desc": ""
+      "desc": "Ananas en Mais"
     },
     {
       "id": 211,
       "naam": "Vrasene Special",
       "prijs": 14,
-      "desc": ""
+      "desc": "Paprika, ui, mais en feta"
     },
     {
       "id": 212,
       "naam": "Chef Special",
       "prijs": 14,
-      "desc": ""
+      "desc": "Paprika, ui, champignons en feta"
     }
   ],
   "turks-brood": [
@@ -152,73 +152,73 @@
       "id": 301,
       "naam": "Natuur",
       "prijs": 11,
-      "desc": ""
+      "desc": "Natuur"
     },
     {
       "id": 302,
       "naam": "Jonge Kaas",
       "prijs": 12,
-      "desc": ""
+      "desc": "Jonge kaas"
     },
     {
       "id": 303,
       "naam": "Feta",
       "prijs": 12,
-      "desc": ""
+      "desc": "Feta"
     },
     {
       "id": 304,
       "naam": "Champignons",
       "prijs": 12,
-      "desc": ""
+      "desc": "Champignons"
     },
     {
       "id": 305,
       "naam": "Pikant",
       "prijs": 12,
-      "desc": ""
+      "desc": "Pikante pepers"
     },
     {
       "id": 306,
       "naam": "Hawaï",
       "prijs": 12,
-      "desc": ""
+      "desc": "Ananas"
     },
     {
       "id": 307,
       "naam": "Maïs",
       "prijs": 12,
-      "desc": ""
+      "desc": "Ananas"
     },
     {
       "id": 308,
       "naam": "Special",
       "prijs": 13,
-      "desc": ""
+      "desc": "Paprika en Ui"
     },
     {
       "id": 309,
       "naam": "Mexicano",
       "prijs": 13,
-      "desc": ""
+      "desc": "Paprika en Mais"
     },
     {
       "id": 310,
       "naam": "Tropical",
       "prijs": 13,
-      "desc": ""
+      "desc": "Ananas en Mais"
     },
     {
       "id": 311,
       "naam": "Vrasene Special",
       "prijs": 14,
-      "desc": ""
+      "desc": "Paprika, ui, mais en feta"
     },
     {
       "id": 312,
       "naam": "Chef Special",
       "prijs": 14,
-      "desc": ""
+      "desc": "Paprika, ui, champignons en feta"
     }
   ],
   "klein-broodjes": [
@@ -226,73 +226,73 @@
       "id": 401,
       "naam": "Natuur",
       "prijs": 9,
-      "desc": ""
+      "desc": "Natuur"
     },
     {
       "id": 402,
       "naam": "Jonge Kaas",
       "prijs": 10,
-      "desc": ""
+      "desc": "Jonge kaas"
     },
     {
       "id": 403,
       "naam": "Feta",
       "prijs": 10,
-      "desc": ""
+      "desc": "Feta"
     },
     {
       "id": 404,
       "naam": "Champignons",
       "prijs": 10,
-      "desc": ""
+      "desc": "Champignons"
     },
     {
       "id": 405,
       "naam": "Pikant",
       "prijs": 10,
-      "desc": ""
+      "desc": "Pikante pepers"
     },
     {
       "id": 406,
       "naam": "Hawaï",
       "prijs": 10,
-      "desc": ""
+      "desc": "Ananas"
     },
     {
       "id": 407,
       "naam": "Maïs",
       "prijs": 10,
-      "desc": ""
+      "desc": "Ananas"
     },
     {
       "id": 408,
       "naam": "Special",
       "prijs": 11,
-      "desc": ""
+      "desc": "Paprika en Ui"
     },
     {
       "id": 409,
       "naam": "Mexicano",
       "prijs": 11,
-      "desc": ""
+      "desc": "Paprika en Mais"
     },
     {
       "id": 410,
       "naam": "Tropical",
       "prijs": 11,
-      "desc": ""
+      "desc": "Ananas en Mais"
     },
     {
       "id": 411,
       "naam": "Vrasene Special",
       "prijs": 12,
-      "desc": ""
+      "desc": "Paprika, ui, mais en feta"
     },
     {
       "id": 412,
       "naam": "Chef Special",
       "prijs": 12,
-      "desc": ""
+      "desc": "Paprika, ui, champignons en feta"
     }
   ],
   "durum": [
@@ -300,73 +300,73 @@
       "id": 501,
       "naam": "Natuur",
       "prijs": 9,
-      "desc": ""
+      "desc": "Natuur"
     },
     {
       "id": 502,
       "naam": "Jonge Kaas",
       "prijs": 10,
-      "desc": ""
+      "desc": "Jonge kaas"
     },
     {
       "id": 503,
       "naam": "Feta",
       "prijs": 10,
-      "desc": ""
+      "desc": "Feta"
     },
     {
       "id": 504,
       "naam": "Champignons",
       "prijs": 10,
-      "desc": ""
+      "desc": "Champignons"
     },
     {
       "id": 505,
       "naam": "Pikant",
       "prijs": 10,
-      "desc": ""
+      "desc": "Pikante pepers"
     },
     {
       "id": 506,
       "naam": "Hawaï",
       "prijs": 10,
-      "desc": ""
+      "desc": "Ananas"
     },
     {
       "id": 507,
       "naam": "Maïs",
       "prijs": 10,
-      "desc": ""
+      "desc": "Ananas"
     },
     {
       "id": 508,
       "naam": "Special",
       "prijs": 11,
-      "desc": ""
+      "desc": "Paprika en Ui"
     },
     {
       "id": 509,
       "naam": "Mexicano",
       "prijs": 11,
-      "desc": ""
+      "desc": "Paprika en Mais"
     },
     {
       "id": 510,
       "naam": "Tropical",
       "prijs": 11,
-      "desc": ""
+      "desc": "Ananas en Mais"
     },
     {
       "id": 511,
       "naam": "Vrasene Special",
       "prijs": 12,
-      "desc": ""
+      "desc": "Paprika, ui, mais en feta"
     },
     {
       "id": 512,
       "naam": "Chef Special",
       "prijs": 12,
-      "desc": ""
+      "desc": "Paprika, ui, champignons en feta"
     }
   ],
   "Kapsalons": [

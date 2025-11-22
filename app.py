@@ -25,6 +25,7 @@ except ImportError:
 # Core imports
 from bon_generator import generate_bon_text
 from modules.koeriers import open_koeriers
+from modules.afhaal import open_afhaal
 from modules.geschiedenis import open_geschiedenis
 from modules.klanten import open_klanten_zoeken
 from modules.menu_management import open_menu_management
@@ -34,6 +35,7 @@ from modules.rapportage import open_rapportage
 from modules.backup import open_backup_tool
 from modules.voorraad import open_voorraad
 from modules.bon_viewer import open_bon_viewer
+from modules.online_bestellingen import open_online_bestellingen
 from database import DatabaseContext, initialize_database
 from logging_config import setup_logging, get_logger
 from config import load_settings, save_settings, load_json_file, save_json_file
@@ -1576,34 +1578,80 @@ info@pitapizzanapoli.be
             )
         )
     
+    def _is_focus_in_entry(self, widget=None) -> bool:
+        """
+        Check if focus is currently in an Entry or Text widget.
+        
+        Args:
+            widget: Optional widget to check (defaults to current focus)
+            
+        Returns:
+            True if focus is in Entry/Text widget, False otherwise
+        """
+        if widget is None:
+            widget = self.root.focus_get()
+        
+        if widget is None:
+            return False
+        
+        # Check if widget is an Entry or Text widget
+        widget_class = widget.__class__.__name__
+        return widget_class in ('Entry', 'Text', 'ScrolledText')
+    
+    def _safe_shortcut_handler(self, handler, event=None):
+        """
+        Wrapper for keyboard shortcuts that checks if focus is in Entry/Text widget.
+        Only executes handler if focus is NOT in Entry/Text widget.
+        
+        Args:
+            handler: Function to call if shortcut should execute
+            event: Keyboard event (optional)
+        """
+        if self._is_focus_in_entry():
+            # Focus is in Entry/Text widget, don't execute shortcut
+            return None
+        # Focus is not in Entry/Text widget, execute shortcut
+        if event:
+            return handler(event)
+        else:
+            return handler()
+    
     def setup_keyboard_shortcuts(self) -> None:
         """Setup keyboard shortcuts."""
-        # Print shortcuts
-        self.root.bind("<Control-p>", self.show_print_preview)
-        self.root.bind("<Command-p>", self.show_print_preview)
+        # Print shortcuts - only when NOT typing in Entry/Text
+        self.root.bind("<Control-p>", lambda e: self._safe_shortcut_handler(self.show_print_preview, e))
+        self.root.bind("<Command-p>", lambda e: self._safe_shortcut_handler(self.show_print_preview, e))
         
-        # Help shortcuts
-        self.root.bind("<F1>", self.show_keyboard_shortcuts)
-        self.root.bind("<Control-h>", self.show_keyboard_shortcuts)
-        self.root.bind("<Command-h>", self.show_keyboard_shortcuts)
+        # Help shortcuts - only when NOT typing in Entry/Text
+        self.root.bind("<F1>", lambda e: self._safe_shortcut_handler(self.show_keyboard_shortcuts, e))
+        self.root.bind("<Control-h>", lambda e: self._safe_shortcut_handler(self.show_keyboard_shortcuts, e))
+        self.root.bind("<Command-h>", lambda e: self._safe_shortcut_handler(self.show_keyboard_shortcuts, e))
         
-        # New order shortcuts (only in front mode)
+        # New order shortcuts (only in front mode) - only when NOT typing in Entry/Text
         if self.mode == "front":
-            self.root.bind("<Control-n>", lambda e: self._quick_new_order())
-            self.root.bind("<Command-n>", lambda e: self._quick_new_order())
+            self.root.bind("<Control-n>", lambda e: self._safe_shortcut_handler(lambda: self._quick_new_order(), e))
+            self.root.bind("<Command-n>", lambda e: self._safe_shortcut_handler(lambda: self._quick_new_order(), e))
             
-            # Quick print (without preview)
-            self.root.bind("<Control-s>", lambda e: self._quick_print())
-            self.root.bind("<Command-s>", lambda e: self._quick_print())
+            # Quick print (without preview) - only when NOT typing in Entry/Text
+            self.root.bind("<Control-s>", lambda e: self._safe_shortcut_handler(lambda: self._quick_print(), e))
+            self.root.bind("<Command-s>", lambda e: self._safe_shortcut_handler(lambda: self._quick_print(), e))
             
-            # Escape to close dialogs
-            self.root.bind("<Escape>", self._handle_escape)
+            # Escape to close dialogs - only when NOT typing in Entry/Text
+            self.root.bind("<Escape>", lambda e: self._safe_shortcut_handler(self._handle_escape, e))
             
-            # Delete to remove selected item
-            self.root.bind("<Delete>", self._handle_delete)
-            self.root.bind("<BackSpace>", self._handle_delete)
+            # Delete to remove selected item - only when NOT typing in Entry/Text
+            # Note: Delete and BackSpace should work normally in Entry widgets, so we check focus
+            def handle_delete_safe(event):
+                if self._is_focus_in_entry():
+                    # Let Entry widget handle Delete/BackSpace normally
+                    return None
+                return self._handle_delete(event)
+            
+            self.root.bind("<Delete>", handle_delete_safe)
+            self.root.bind("<BackSpace>", handle_delete_safe)
             
             # Clipboard paste hotkey for phone number (Ctrl+Shift+V or Ctrl+V in phone field)
+            # This one should work even in Entry widgets, so no check needed
             self.root.bind("<Control-Shift-v>", self._handle_paste_phone)
             self.root.bind("<Command-Shift-v>", self._handle_paste_phone)
     
@@ -1641,8 +1689,10 @@ info@pitapizzanapoli.be
     def setup_other_tabs(self) -> None:
         """Setup tabs for other modules (lazy load) based on mode."""
         if self.mode == "front":
-            # Front mode: Bestellen, Koeriers (geen Geschiedenis)
+            # Front mode: Bestellen, Online Bestellingen, Koeriers, Afhaal (geen Geschiedenis)
+            self.tab_manager.add_tab("Online Bestellingen")
             self.tab_manager.add_tab("Koeriers")
+            self.tab_manager.add_tab("Afhaal")
         else:
             # Back mode: Admin functions + Geschiedenis
             self.tab_manager.add_tab("Menu Management")
@@ -1664,8 +1714,12 @@ info@pitapizzanapoli.be
             "Rapportage": lambda parent: open_rapportage(parent),
             "Backup/Restore": lambda parent: open_backup_tool(parent),
             "Koeriers": lambda parent: open_koeriers(parent),
+            "Afhaal": lambda parent: open_afhaal(parent),
             "Voorraad": lambda parent: open_voorraad(parent),
             "Menu Management": lambda parent: open_menu_management(parent),
+            "Online Bestellingen": lambda parent: open_online_bestellingen(
+                parent, self.app_settings, self.menu_data, self.EXTRAS
+            ),
         }
         self.tab_manager.on_tab_changed(event, load_callbacks)
     
