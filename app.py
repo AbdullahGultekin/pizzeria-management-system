@@ -1689,10 +1689,11 @@ info@pitapizzanapoli.be
     def setup_other_tabs(self) -> None:
         """Setup tabs for other modules (lazy load) based on mode."""
         if self.mode == "front":
-            # Front mode: Bestellen, Online Bestellingen, Koeriers, Afhaal (geen Geschiedenis)
+            # Front mode: Bestellen, Online Bestellingen, Koeriers, Afhaal, Geschiedenis
             self.tab_manager.add_tab("Online Bestellingen")
             self.tab_manager.add_tab("Koeriers")
             self.tab_manager.add_tab("Afhaal")
+            self.tab_manager.add_tab("Geschiedenis")
         else:
             # Back mode: Admin functions + Geschiedenis
             self.tab_manager.add_tab("Menu Management")

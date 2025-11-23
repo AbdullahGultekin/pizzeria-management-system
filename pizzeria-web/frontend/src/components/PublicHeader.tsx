@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import RestaurantIcon from '@mui/icons-material/Restaurant'
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart'
 import ContactMailIcon from '@mui/icons-material/ContactMail'
+import LocalShippingIcon from '@mui/icons-material/LocalShipping'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import CancelIcon from '@mui/icons-material/Cancel'
@@ -216,6 +217,27 @@ const PublicHeader = () => {
               }}
             >
               Winkelwagen
+            </Button>
+            <Button
+              startIcon={<LocalShippingIcon />}
+              onClick={() => navigate('/track')}
+              sx={{
+                textTransform: 'none',
+                fontWeight: 600,
+                fontSize: '1rem',
+                color: location.pathname === '/track' ? brandColors.primary : '#666',
+                px: 3,
+                py: 1.5,
+                borderRadius: 0,
+                borderBottom: location.pathname === '/track' ? `3px solid ${brandColors.primary}` : '3px solid transparent',
+                '&:hover': {
+                  bgcolor: '#fff5f5',
+                  color: brandColors.primary,
+                },
+                transition: 'all 0.2s ease',
+              }}
+            >
+              Bestelling Volgen
             </Button>
             <Button
               startIcon={<ContactMailIcon />}

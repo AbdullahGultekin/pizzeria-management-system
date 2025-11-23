@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Dialog,
   DialogTitle,
@@ -11,9 +11,12 @@ import {
   Tab,
   Tabs,
   Alert,
-  Link,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
 } from '@mui/material'
-import { customerAPI } from '../services/api'
+import { customerAPI, addressAPI } from '../services/api'
 import { getErrorMessage } from '../utils/errorHandler'
 import { brandColors } from '../theme/colors'
 
@@ -45,12 +48,12 @@ function TabPanel(props: TabPanelProps) {
 }
 
 const CustomerAuth = ({ open, onClose, onSuccess }: CustomerAuthProps) => {
-  const navigate = useNavigate()
   const [tab, setTab] = useState(0)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [resendEmail, setResendEmail] = useState('')
   const [resendLoading, setResendLoading] = useState(false)
+  const [emailAlreadyExists, setEmailAlreadyExists] = useState(false)
 
   // Login form
   const [loginEmail, setLoginEmail] = useState('')
@@ -67,6 +70,33 @@ const CustomerAuth = ({ open, onClose, onSuccess }: CustomerAuthProps) => {
     huisnummer: '',
     plaats: '',
   })
+  
+  // Address autocomplete data
+  const [straatnamen, setStraatnamen] = useState<string[]>([])
+  const [postcodes, setPostcodes] = useState<string[]>([])  // List of "9120 Vrasene" format
+
+  // Load street names and postcodes on mount
+  useEffect(() => {
+    const loadAddressData = async () => {
+      try {
+        // Load street names
+        const streetsResponse = await addressAPI.getStreets()
+        const streets = Array.isArray(streetsResponse) ? streetsResponse : streetsResponse.streets || []
+        // Remove duplicates while preserving order
+        const uniqueStreets = Array.from(new Set(streets as string[])) as string[]
+        setStraatnamen(uniqueStreets)
+        
+        // Load postcodes
+        const postcodesResponse = await addressAPI.getPostcodes()
+        const postcodesList = Array.isArray(postcodesResponse) ? postcodesResponse : postcodesResponse.postcodes || []
+        setPostcodes(postcodesList)
+      } catch (e) {
+        console.error('Error loading address data:', e)
+      }
+    }
+    
+    loadAddressData()
+  }, [])
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setTab(newValue)
@@ -83,6 +113,26 @@ const CustomerAuth = ({ open, onClose, onSuccess }: CustomerAuthProps) => {
       huisnummer: '',
       plaats: '',
     })
+  }
+  
+  // Handle street name change - add to list if new
+  const handleStraatChange = async (value: string) => {
+    setRegisterData({ ...registerData, straat: value })
+    
+    // If street is not in the list and user has typed something, add it
+    if (value.trim() && !straatnamen.some(s => s.toLowerCase() === value.trim().toLowerCase())) {
+      try {
+        await addressAPI.addStreet(value.trim())
+        // Reload street names
+        const streetsResponse = await addressAPI.getStreets()
+        const streets = Array.isArray(streetsResponse) ? streetsResponse : streetsResponse.streets || []
+        const uniqueStreets = Array.from(new Set(streets as string[])) as string[]
+        setStraatnamen(uniqueStreets)
+      } catch (e) {
+        // Silently fail - street might already exist or there's a server error
+        console.warn('Could not add street name:', e)
+      }
+    }
   }
 
   const handleLogin = async () => {
@@ -105,11 +155,15 @@ const CustomerAuth = ({ open, onClose, onSuccess }: CustomerAuthProps) => {
       onSuccess(response.customer, response.access_token)
       onClose()
     } catch (err: any) {
+      // Log full error for debugging
+      console.error('Login error:', err)
+      console.error('Error response:', err.response?.data)
+      
       const errorMsg = getErrorMessage(err)
       setError(errorMsg)
       
       // If email not verified, show resend option
-      if (errorMsg.includes('niet geverifieerd') || errorMsg.includes('verificatie')) {
+      if (errorMsg.includes('niet geverifieerd') || errorMsg.includes('verificatie') || err.response?.status === 403) {
         setResendEmail(loginEmail)
       }
     } finally {
@@ -135,6 +189,7 @@ const CustomerAuth = ({ open, onClose, onSuccess }: CustomerAuthProps) => {
 
   const handleRegister = async () => {
     setError('')
+    setEmailAlreadyExists(false)
     setLoading(true)
 
     try {
@@ -158,15 +213,54 @@ const CustomerAuth = ({ open, onClose, onSuccess }: CustomerAuthProps) => {
       }
 
       try {
-        await customerAPI.register({
-          email: registerData.email,
+        // Helper function to split postcode_gemeente into postcode and plaats
+        const splitPostcodeGemeente = (value: string): { postcode: string; plaats: string } => {
+          const parts = value.trim().split(' ', 2)
+          if (parts.length >= 2) {
+            return {
+              postcode: parts[0],
+              plaats: parts.slice(1).join(' ')
+            }
+          }
+          return { postcode: '', plaats: '' }
+        }
+        
+        // Prepare registration data - split postcode_gemeente into postcode and plaats
+        const registrationData: {
+          email: string
+          password: string
+          telefoon: string
+          naam: string
+          straat?: string
+          huisnummer?: string
+          postcode?: string
+          plaats?: string
+        } = {
+          email: registerData.email.trim(),
           password: registerData.password,
-          telefoon: registerData.telefoon,
-          naam: registerData.naam,
-          straat: registerData.straat || undefined,
-          huisnummer: registerData.huisnummer || undefined,
-          plaats: registerData.plaats || undefined,
-        })
+          telefoon: registerData.telefoon.trim(),
+          naam: registerData.naam.trim(),
+        }
+        
+        // Only add optional fields if they have values
+        if (registerData.straat && registerData.straat.trim()) {
+          registrationData.straat = registerData.straat.trim()
+        }
+        if (registerData.huisnummer && registerData.huisnummer.trim()) {
+          registrationData.huisnummer = registerData.huisnummer.trim()
+        }
+        if (registerData.plaats && registerData.plaats.trim()) {
+          // Split postcode_gemeente format "9120 Vrasene" into postcode and plaats
+          const { postcode, plaats } = splitPostcodeGemeente(registerData.plaats)
+          if (postcode) {
+            registrationData.postcode = postcode
+          }
+          if (plaats) {
+            registrationData.plaats = plaats
+          }
+        }
+        
+        await customerAPI.register(registrationData)
       } catch (err: any) {
         // Check if it's the verification message (201 status)
         if (err.response?.status === 201 || err.response?.data?.detail?.includes('verificatie')) {
@@ -180,7 +274,30 @@ const CustomerAuth = ({ open, onClose, onSuccess }: CustomerAuthProps) => {
         throw err
       }
     } catch (err: any) {
-      setError(getErrorMessage(err))
+      // Log full error for debugging
+      console.error('Registration error:', err)
+      console.error('Error response:', err.response?.data)
+      
+      const errorMsg = getErrorMessage(err)
+      const errorDetail = err.response?.data?.detail || ''
+      
+      // Check if email already exists
+      if (errorDetail.includes('E-mailadres is al geregistreerd') || errorDetail.includes('al geregistreerd')) {
+        setEmailAlreadyExists(true)
+        setError('Dit e-mailadres is al geregistreerd. Log in met je bestaande account of gebruik een ander e-mailadres.')
+      } else {
+        setEmailAlreadyExists(false)
+        setError(errorMsg)
+      }
+      
+      // If it's a validation error, show more details
+      if (err.response?.data?.errors && Array.isArray(err.response.data.errors)) {
+        const validationErrors = err.response.data.errors
+        if (validationErrors.length > 0) {
+          const firstError = validationErrors[0]
+          setError(firstError.message || errorMsg)
+        }
+      }
     } finally {
       setLoading(false)
     }
@@ -198,8 +315,50 @@ const CustomerAuth = ({ open, onClose, onSuccess }: CustomerAuthProps) => {
       </DialogTitle>
       <DialogContent>
         {error && (
-          <Alert severity="error" sx={{ mb: 2 }}>
+          <Alert 
+            severity="error" 
+            sx={{ mb: 2 }}
+            action={
+              emailAlreadyExists ? (
+                <Button
+                  color="inherit"
+                  size="small"
+                  onClick={() => {
+                    setTab(0)
+                    setError('')
+                    setEmailAlreadyExists(false)
+                    setLoginEmail(registerData.email)
+                  }}
+                >
+                  Inloggen
+                </Button>
+              ) : null
+            }
+          >
             {error}
+            {emailAlreadyExists && (
+              <Typography variant="body2" sx={{ mt: 1 }}>
+                Heb je al een account? Klik op "Inloggen" om in te loggen met dit e-mailadres.
+              </Typography>
+            )}
+          </Alert>
+        )}
+        
+        {/* Show resend verification option if email not verified */}
+        {resendEmail && tab === 0 && (
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            <Typography variant="body2" sx={{ mb: 1 }}>
+              Je e-mailadres is nog niet geverifieerd. Controleer je inbox en klik op de verificatielink.
+            </Typography>
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={handleResendVerification}
+              disabled={resendLoading}
+              sx={{ textTransform: 'none' }}
+            >
+              {resendLoading ? 'Verzenden...' : 'Verificatielink opnieuw verzenden'}
+            </Button>
           </Alert>
         )}
 
@@ -311,10 +470,25 @@ const CustomerAuth = ({ open, onClose, onSuccess }: CustomerAuthProps) => {
             fullWidth
             label="Straat"
             value={registerData.straat}
-            onChange={(e) => setRegisterData({ ...registerData, straat: e.target.value })}
+            onChange={(e) => handleStraatChange(e.target.value)}
+            onBlur={(e) => {
+              // When user leaves field, add street if it's new
+              if (e.target.value.trim() && !straatnamen.some(s => s.toLowerCase() === e.target.value.trim().toLowerCase())) {
+                handleStraatChange(e.target.value)
+              }
+            }}
             margin="normal"
             autoComplete="street-address"
+            helperText="Kies een straat uit de lijst of typ een nieuwe straatnaam"
+            inputProps={{
+              list: 'straatnamen-list-register',
+            }}
           />
+          <datalist id="straatnamen-list-register">
+            {straatnamen.map((straat, index) => (
+              <option key={`${straat}-${index}`} value={straat} />
+            ))}
+          </datalist>
           <TextField
             fullWidth
             label="Huisnummer"
@@ -323,14 +497,21 @@ const CustomerAuth = ({ open, onClose, onSuccess }: CustomerAuthProps) => {
             margin="normal"
             autoComplete="address-line2"
           />
-          <TextField
-            fullWidth
-            label="Plaats"
-            value={registerData.plaats}
-            onChange={(e) => setRegisterData({ ...registerData, plaats: e.target.value })}
-            margin="normal"
-            autoComplete="address-level2"
-          />
+          <FormControl fullWidth margin="normal">
+            <InputLabel>Postcode en Gemeente</InputLabel>
+            <Select
+              value={registerData.plaats}
+              onChange={(e) => setRegisterData({ ...registerData, plaats: e.target.value })}
+              label="Postcode en Gemeente"
+            >
+              <MenuItem value="">Selecteer postcode en gemeente</MenuItem>
+              {Array.isArray(postcodes) && postcodes.map((pc) => (
+                <MenuItem key={pc} value={pc}>
+                  {pc}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
         </TabPanel>
       </DialogContent>
       <DialogActions>

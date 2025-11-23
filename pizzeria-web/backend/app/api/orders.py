@@ -4,7 +4,7 @@ Order API endpoints.
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, date
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from app.core.database import get_db
@@ -616,6 +616,169 @@ async def delete_order(
     
     logger.info(f"Order deleted: {order_id}")
     return None
+
+
+@router.post("/orders/delete-multiple", status_code=status.HTTP_200_OK)
+async def delete_orders(
+    order_ids: Optional[List[int]] = None,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Delete multiple orders or all orders.
+    If order_ids is provided, delete only those orders.
+    If order_ids is None or empty, delete all orders (requires confirmation).
+    """
+    try:
+        from sqlalchemy import text
+        
+        if order_ids and len(order_ids) > 0:
+            # Delete specific orders
+            deleted_count = 0
+            for order_id in order_ids:
+                order = db.query(Order).filter(Order.id == order_id).first()
+                if order:
+                    db.delete(order)
+                    deleted_count += 1
+            
+            db.commit()
+            logger.info(f"Deleted {deleted_count} orders: {order_ids}")
+            return {
+                "message": f"{deleted_count} bestelling(en) succesvol verwijderd",
+                "deleted_count": deleted_count
+            }
+        else:
+            # Delete all orders
+            result = db.execute(text("SELECT COUNT(*) as count FROM bestellingen"))
+            total_count = result.fetchone()[0]
+            
+            if total_count == 0:
+                return {
+                    "message": "Geen bestellingen gevonden om te verwijderen",
+                    "deleted_count": 0
+                }
+            
+            # Delete all orders
+            db.execute(text("DELETE FROM bestellingen"))
+            db.commit()
+            
+            logger.info(f"Deleted all orders ({total_count} orders)")
+            return {
+                "message": f"Alle bestellingen ({total_count}) succesvol verwijderd",
+                "deleted_count": total_count
+            }
+    except Exception as e:
+        logger.exception(f"Error deleting orders: {e}")
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Fout bij verwijderen bestellingen: {str(e)}"
+        )
+
+
+@router.post("/orders/renumber", status_code=status.HTTP_200_OK)
+async def renumber_receipts(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Renumber all receipts in chronological order.
+    This renumbers all orders by date and time, updating bon_teller table accordingly.
+    """
+    try:
+        from sqlalchemy import text
+        from datetime import datetime
+        
+        # Get all orders sorted by date and time
+        orders = db.execute(text("""
+            SELECT id, datum, tijd
+            FROM bestellingen
+            ORDER BY datum ASC, tijd ASC
+        """)).fetchall()
+        
+        if not orders:
+            return {"message": "Geen bestellingen gevonden om te hernummeren", "updated_count": 0}
+        
+        # Renumber per day
+        current_date = None
+        day_counter = {}
+        updates = []
+        
+        for order in orders:
+            order_id = order[0]  # id
+            order_date = order[1]  # datum
+            order_time = order[2]  # tijd
+            
+            # Reset counter for new day
+            if order_date != current_date:
+                current_date = order_date
+                # Parse year from date
+                try:
+                    if isinstance(order_date, str):
+                        year = int(order_date.split('-')[0])
+                    else:
+                        year = order_date.year
+                except (ValueError, IndexError, AttributeError):
+                    year = datetime.now().year
+                
+                # Start counter for this day
+                day_counter[order_date] = {'year': year, 'counter': 0}
+            
+            # Increment counter
+            day_counter[order_date]['counter'] += 1
+            counter = day_counter[order_date]['counter']
+            year = day_counter[order_date]['year']
+            
+            # Generate new bonnummer: YYYYNNNN
+            new_bonnummer = f"{year}{counter:04d}"
+            
+            updates.append((new_bonnummer, order_id))
+        
+        # Update all bonnummers
+        updated_count = 0
+        for new_bonnummer, order_id in updates:
+            db.execute(text("""
+                UPDATE bestellingen
+                SET bonnummer = :bonnummer
+                WHERE id = :order_id
+            """), {"bonnummer": new_bonnummer, "order_id": order_id})
+            updated_count += 1
+        
+        # Update bon_teller table for all involved days
+        for date_str, info in day_counter.items():
+            try:
+                # Parse date to get year and day of year
+                if isinstance(date_str, str):
+                    date_obj = datetime.strptime(date_str, "%Y-%m-%d")
+                else:
+                    date_obj = date_str
+                
+                year = date_obj.year
+                day_of_year = date_obj.timetuple().tm_yday
+                last_number = info['counter']
+                
+                # Update bon_teller
+                db.execute(text("""
+                    INSERT OR REPLACE INTO bon_teller (jaar, dag, laatste_nummer)
+                    VALUES (:jaar, :dag, :laatste_nummer)
+                """), {"jaar": year, "dag": day_of_year, "laatste_nummer": last_number})
+            except Exception as e:
+                logger.warning(f"Kon bon_teller niet updaten voor {date_str}: {e}")
+        
+        db.commit()
+        
+        logger.info(f"Receipts renumbered: {updated_count} orders updated")
+        return {
+            "message": f"Bonnen succesvol hernummerd! Aantal bijgewerkte bonnen: {updated_count}",
+            "updated_count": updated_count
+        }
+    except Exception as e:
+        logger.exception(f"Error renumbering receipts: {e}")
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Fout bij hernummeren bonnen: {str(e)}"
+        )
 
 
 @router.get("/orders/online/pending")

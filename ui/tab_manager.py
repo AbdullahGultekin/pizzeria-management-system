@@ -39,7 +39,7 @@ class TabManager:
         load_callbacks: Dict[str, callable]
     ) -> None:
         """
-        Load content for a tab when it's first selected.
+        Load content for a tab when it's first selected (OPTIMIZED - async for heavy tabs).
         
         Args:
             title: Tab title
@@ -52,14 +52,32 @@ class TabManager:
         parent = info["frame"]
         callback = load_callbacks.get(title)
         if callback:
-            try:
-                callback(parent)
-                info["loaded"] = True
-            except Exception as e:
-                from logging_config import get_logger
-                logger = get_logger("pizzeria.ui.tab_manager")
-                logger.exception(f"Error loading tab {title}: {e}")
-                info["loaded"] = True  # Mark as loaded to prevent retry loops
+            # Heavy tabs: load asynchronously to prevent UI freeze
+            heavy_tabs = ["Geschiedenis", "Rapportage", "Koeriers", "Online Bestellingen"]
+            if title in heavy_tabs:
+                # Schedule async load (non-blocking)
+                self.notebook.after_idle(lambda: self._load_tab_async(title, parent, callback, info))
+            else:
+                # Light tabs: load immediately
+                try:
+                    callback(parent)
+                    info["loaded"] = True
+                except Exception as e:
+                    from logging_config import get_logger
+                    logger = get_logger("pizzeria.ui.tab_manager")
+                    logger.exception(f"Error loading tab {title}: {e}")
+                    info["loaded"] = True
+    
+    def _load_tab_async(self, title: str, parent: tk.Frame, callback: callable, info: Dict[str, Any]) -> None:
+        """Load tab content asynchronously (non-blocking)."""
+        try:
+            callback(parent)
+            info["loaded"] = True
+        except Exception as e:
+            from logging_config import get_logger
+            logger = get_logger("pizzeria.ui.tab_manager")
+            logger.exception(f"Error loading tab {title}: {e}")
+            info["loaded"] = True
     
     def on_tab_changed(
         self,

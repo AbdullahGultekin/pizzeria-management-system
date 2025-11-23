@@ -8,6 +8,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 from app.models.customer import Customer
 from app.services.notification import notification_service
+from app.services.email_service import email_service
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +84,7 @@ class EmailVerificationService:
         logger.info(f"Email verified for customer {customer.id} ({customer.email})")
         return customer
     
-    async def send_verification_email(self, customer: Customer, base_url: str = "http://localhost:3000") -> bool:
+    async def send_verification_email(self, customer: Customer, base_url: str = "http://localhost:3000", order_bonnummer: Optional[str] = None) -> bool:
         """
         Send verification email to customer.
         
@@ -122,23 +123,20 @@ www.pitapizzanapoli.be
         """
         
         try:
-            # For now, log the email (in production, use actual email service)
-            logger.info(f"Verification email would be sent to {customer.email}")
-            logger.info(f"Verification link: {verification_link}")
+            # Use email service to send verification email
+            success = await email_service.send_verification_email(
+                to_email=customer.email,
+                customer_name=customer.naam,
+                verification_link=verification_link,
+                order_bonnummer=order_bonnummer
+            )
             
-            # TODO: Integrate with actual email service (SMTP, SendGrid, etc.)
-            # Example:
-            # await self._send_email(customer.email, email_subject, email_body)
+            if success:
+                logger.info(f"Verification email sent to {customer.email}")
+            else:
+                logger.warning(f"Failed to send verification email to {customer.email}")
             
-            # For development, we'll just log it
-            # In production, you would use a service like:
-            # - SMTP (smtplib)
-            # - SendGrid
-            # - AWS SES
-            # - Mailgun
-            # etc.
-            
-            return True
+            return success
         except Exception as e:
             logger.error(f"Error sending verification email: {e}")
             return False

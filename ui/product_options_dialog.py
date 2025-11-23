@@ -298,51 +298,32 @@ class ProductOptionsDialog:
         self.half2_var.trace_add("write", lambda *_: self._update_price())
     
     def _create_compact_pizza_grid(self, parent: tk.Frame, var: tk.StringVar, default: int) -> None:
-        """Create compact pizza number selection grid with scrollable area."""
-        # Create scrollable canvas container
-        canvas_container = tk.Frame(parent, bg=self.COLORS['bg_section'], relief=tk.SUNKEN, bd=1)
-        canvas_container.pack(fill=tk.BOTH, expand=True)
+        """Create compact pizza number selection grid - all 49 pizzas visible without scrolling."""
+        # Create grid frame directly (no scrollable canvas needed)
+        grid_frame = tk.Frame(parent, bg=self.COLORS['bg_section'], relief=tk.SUNKEN, bd=1)
+        grid_frame.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
         
-        # Create canvas and scrollbar
-        canvas = tk.Canvas(canvas_container, bg=self.COLORS['bg_section'], highlightthickness=0, height=120)
-        scrollbar = tk.Scrollbar(canvas_container, orient=tk.VERTICAL, command=canvas.yview)
-        grid_frame = tk.Frame(canvas, bg=self.COLORS['bg_section'])
+        # Use 10 columns to fit all 49 pizzas in 5 rows (10 * 5 = 50, but we only need 49)
+        # This ensures all pizzas are visible without scrolling
+        max_num, cols = 49, 10  # 10 columns = 5 rows (49 pizzas fit perfectly)
         
-        def update_scrollregion(event=None):
-            canvas.update_idletasks()
-            canvas.configure(scrollregion=canvas.bbox("all"))
-        
-        grid_frame.bind("<Configure>", update_scrollregion)
-        
-        canvas_window = canvas.create_window((0, 0), window=grid_frame, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
-        
-        def configure_canvas_width(event):
-            canvas_width = event.width
-            canvas.itemconfig(canvas_window, width=canvas_width)
-        
-        canvas.bind('<Configure>', configure_canvas_width)
-        
-        # Use a more compact grid layout
-        max_num, cols = 49, 7  # 7 columns for better fit
-        
-        # Create grid of buttons
+        # Create grid of buttons - compact size for better fit
         for i in range(1, max_num + 1):
             btn = tk.Radiobutton(
                 grid_frame,
                 text=str(i),
                 value=str(i),
                 variable=var,
-                width=3,
+                width=2,  # Smaller width for compact layout
                 indicatoron=0,
                 bg="#EDEBFE",
                 selectcolor=self.COLORS['pizza_yellow'],
                 activebackground="#D4D1F5",
                 relief=tk.RAISED,
                 bd=1,
-                padx=2,
-                pady=2,
-                font=("Arial", 8, "bold"),
+                padx=1,  # Minimal padding
+                pady=1,  # Minimal padding
+                font=("Arial", 7, "bold"),  # Smaller font for compact display
                 command=self._update_price,
                 cursor="hand2"
             )
@@ -353,23 +334,11 @@ class ProductOptionsDialog:
         for c in range(cols):
             grid_frame.grid_columnconfigure(c, weight=1, uniform="pizza_col")
         
-        # Pack canvas and scrollbar
-        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        
-        # Mouse wheel scrolling for pizza grids
-        def on_mousewheel(event):
-            if event.delta:
-                canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
-            else:
-                canvas.yview_scroll(int(-1 * event.delta), "units")
-        
-        canvas.bind("<MouseWheel>", on_mousewheel)
-        canvas.bind("<Button-4>", lambda e: canvas.yview_scroll(-1, "units"))
-        canvas.bind("<Button-5>", lambda e: canvas.yview_scroll(1, "units"))
+        # Configure row weights for equal row distribution
+        for r in range((max_num + cols - 1) // cols):  # Calculate number of rows needed
+            grid_frame.grid_rowconfigure(r, weight=1, uniform="pizza_row")
         
         var.set(str(default))
-        update_scrollregion()
     
     def _create_vlees_section(self, parent: tk.Frame) -> None:
         """Create vlees (meat) selection section."""

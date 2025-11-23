@@ -26,6 +26,10 @@ export const getErrorMessage = (error: any): string => {
 
   switch (status) {
     case 400:
+      // Check if it's a validation error with details
+      if (data?.errors && Array.isArray(data.errors) && data.errors.length > 0) {
+        return data.errors[0].message || data?.detail || 'Ongeldige gegevens. Controleer uw invoer.'
+      }
       return data?.detail || 'Ongeldige gegevens. Controleer uw invoer.'
     case 401:
       return 'U bent niet ingelogd. Log opnieuw in.'
@@ -36,6 +40,10 @@ export const getErrorMessage = (error: any): string => {
     case 409:
       return data?.detail || 'Conflict. Deze gegevens bestaan al.'
     case 422:
+      // Pydantic validation errors
+      if (data?.errors && Array.isArray(data.errors) && data.errors.length > 0) {
+        return data.errors[0].message || data?.detail || 'Validatiefout. Controleer uw gegevens.'
+      }
       return data?.detail || 'Validatiefout. Controleer uw gegevens.'
     case 429:
       return 'Te veel verzoeken. Wacht even en probeer het opnieuw.'

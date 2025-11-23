@@ -139,10 +139,10 @@ const CheckoutPage = () => {
     
     // Load customer data if logged in
     const loadCustomerData = async () => {
-      const token = localStorage.getItem('customer_token')
+      const savedToken = localStorage.getItem('customer_token')
       const savedCustomerData = localStorage.getItem('customer_data')
       
-      if (token && savedCustomerData) {
+      if (savedToken && savedCustomerData) {
         try {
           // Verify token is still valid by fetching customer data
           const customer = await customerAPI.getMe()
@@ -371,9 +371,9 @@ const CheckoutPage = () => {
       localStorage.removeItem('cart')
       setCartItems([])
 
-      // Redirect to status page after 3 seconds
+      // Redirect to tracking page after 3 seconds
       setTimeout(() => {
-        navigate(`/status?bonnummer=${order.bonnummer}`)
+        navigate(`/track?bonnummer=${order.bonnummer}`)
       }, 3000)
     } catch (err: any) {
       console.error('Error placing order:', err)
@@ -472,7 +472,23 @@ const CheckoutPage = () => {
               Bonnummer: {orderNumber}
             </Typography>
             <Typography variant="body1" sx={{ mb: 3 }}>
-              Uw bestelling is succesvol geplaatst. U wordt doorgestuurd naar de status pagina...
+              Uw bestelling is succesvol geplaatst. U wordt doorgestuurd naar de tracking pagina...
+            </Typography>
+            <Button
+              variant="contained"
+              onClick={() => navigate(`/track?bonnummer=${orderNumber}`)}
+              sx={{
+                bgcolor: brandColors.primary,
+                '&:hover': { bgcolor: brandColors.primaryDark },
+                textTransform: 'none',
+                fontWeight: 600,
+                mb: 2,
+              }}
+            >
+              Nu Bestelling Volgen
+            </Button>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+              Je kunt je bestelling ook later volgen via "Bestelling Volgen" in het menu
             </Typography>
           </Paper>
         </Container>
@@ -932,7 +948,7 @@ const CheckoutPage = () => {
       <CustomerAuth
         open={authDialogOpen}
         onClose={() => setAuthDialogOpen(false)}
-        onSuccess={(customer, token) => {
+        onSuccess={(customer) => {
           setIsLoggedIn(true)
           setCustomerData({
             naam: customer.naam || '',

@@ -33,6 +33,10 @@ import SearchIcon from '@mui/icons-material/Search'
 import VisibilityIcon from '@mui/icons-material/Visibility'
 import DeleteIcon from '@mui/icons-material/Delete'
 import PrintIcon from '@mui/icons-material/Print'
+import RefreshIcon from '@mui/icons-material/Refresh'
+import NumbersIcon from '@mui/icons-material/Numbers'
+import DeleteSweepIcon from '@mui/icons-material/DeleteSweep'
+import Checkbox from '@mui/material/Checkbox'
 import { orderAPI, printerAPI } from '../../services/api'
 import { format, parseISO } from 'date-fns'
 import { nl } from 'date-fns/locale'
@@ -71,6 +75,9 @@ const OrdersOverview = () => {
   const [dateFilter, setDateFilter] = useState<string>('today')
   const [printingOrder, setPrintingOrder] = useState<number | null>(null)
   const [printError, setPrintError] = useState('')
+  const [renumbering, setRenumbering] = useState(false)
+  const [selectedOrderIds, setSelectedOrderIds] = useState<number[]>([])
+  const [deleting, setDeleting] = useState(false)
 
   const statusOptions = ['Nieuw', 'In behandeling', 'Klaar', 'Onderweg', 'Afgeleverd', 'Geannuleerd']
   
@@ -87,12 +94,15 @@ const OrdersOverview = () => {
     loadOrders()
   }, [])
 
-  // WebSocket for real-time updates
+  // WebSocket for real-time updates (optional - app works without it)
   const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'
-  const wsUrl = API_BASE_URL.replace('/api/v1', '') + '/ws'
+  const baseUrl = API_BASE_URL.replace('/api/v1', '')
+  const wsUrl = baseUrl.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:') + '/ws'
   
   const { isConnected } = useWebSocket({
     url: wsUrl,
+    autoConnect: true,
+    reconnectInterval: 10000, // Try every 10 seconds (less aggressive)
     onMessage: (message) => {
       if (message.type === 'order_created' || message.type === 'order_updated') {
         // Reload orders when a new order is created or updated
@@ -104,6 +114,9 @@ const OrdersOverview = () => {
       setTimeout(() => {
         // Send subscribe message after connection is established
       }, 100)
+    },
+    onError: () => {
+      // Silently handle - WebSocket is optional, polling will be used as fallback
     },
   })
 
@@ -161,9 +174,90 @@ const OrdersOverview = () => {
     try {
       await orderAPI.delete(orderId)
       await loadOrders()
+      setSelectedOrderIds([]) // Clear selection
     } catch (err: any) {
       console.error('Error deleting order:', err)
       setError(err.response?.data?.detail || 'Kon bestelling niet verwijderen')
+    }
+  }
+
+  const handleDeleteSelected = async () => {
+    if (selectedOrderIds.length === 0) {
+      alert('Selecteer eerst bestellingen om te verwijderen')
+      return
+    }
+
+    if (!window.confirm(
+      `Weet je zeker dat je ${selectedOrderIds.length} bestelling(en) wilt verwijderen?\n\n` +
+      'Deze actie kan niet ongedaan worden gemaakt.'
+    )) {
+      return
+    }
+
+    setDeleting(true)
+    setError('')
+    
+    try {
+      const result = await orderAPI.deleteMultiple(selectedOrderIds)
+      alert(result.message || `${selectedOrderIds.length} bestelling(en) succesvol verwijderd`)
+      setSelectedOrderIds([])
+      await loadOrders()
+    } catch (err: any) {
+      console.error('Error deleting orders:', err)
+      setError(err.response?.data?.detail || 'Kon bestellingen niet verwijderen')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  const handleDeleteAll = async () => {
+    if (!window.confirm(
+      'Weet u zeker dat u ALLE bestellingen permanent wilt verwijderen?\n\n' +
+      'Dit kan niet ongedaan worden gemaakt.'
+    )) {
+      return
+    }
+
+    const confirmText = window.prompt(
+      'Typ "VERWIJDER ALLES" om te bevestigen:'
+    )
+
+    if ((confirmText || '').trim().toUpperCase() !== 'VERWIJDER ALLES') {
+      alert('Verwijderen geannuleerd')
+      return
+    }
+
+    setDeleting(true)
+    setError('')
+    
+    try {
+      const result = await orderAPI.deleteMultiple() // No IDs = delete all
+      alert(result.message || 'Alle bestellingen succesvol verwijderd')
+      setSelectedOrderIds([])
+      await loadOrders()
+    } catch (err: any) {
+      console.error('Error deleting all orders:', err)
+      setError(err.response?.data?.detail || 'Kon alle bestellingen niet verwijderen')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  const handleToggleSelect = (orderId: number) => {
+    setSelectedOrderIds(prev => {
+      if (prev.includes(orderId)) {
+        return prev.filter(id => id !== orderId)
+      } else {
+        return [...prev, orderId]
+      }
+    })
+  }
+
+  const handleSelectAll = () => {
+    if (selectedOrderIds.length === filteredOrders.length) {
+      setSelectedOrderIds([])
+    } else {
+      setSelectedOrderIds(filteredOrders.map(o => o.id))
     }
   }
 
@@ -182,6 +276,30 @@ const OrdersOverview = () => {
       setError(errorMsg)
     } finally {
       setPrintingOrder(null)
+    }
+  }
+
+  const handleRenumberReceipts = async () => {
+    if (!window.confirm(
+      'Weet u zeker dat u alle bonnen wilt hernummeren?\n\n' +
+      'Dit zorgt ervoor dat alle bonnen opnieuw worden genummerd in volgorde van datum en tijd.\n' +
+      'Deze actie kan niet ongedaan worden gemaakt.'
+    )) {
+      return
+    }
+
+    setRenumbering(true)
+    setError('')
+    
+    try {
+      const result = await orderAPI.renumberReceipts()
+      alert(result.message || `Bonnen succesvol hernummerd! Aantal bijgewerkte bonnen: ${result.updated_count || 0}`)
+      await loadOrders() // Reload orders to show new numbers
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.detail || 'Kon bonnen niet hernummeren'
+      setError(errorMsg)
+    } finally {
+      setRenumbering(false)
     }
   }
 
@@ -257,9 +375,41 @@ const OrdersOverview = () => {
             sx={{ fontWeight: 600 }}
           />
         </Box>
-        <Button variant="contained" onClick={loadOrders} sx={{ background: '#e52525' }}>
-          Vernieuwen
-        </Button>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          {selectedOrderIds.length > 0 && (
+            <Button
+              variant="contained"
+              onClick={handleDeleteSelected}
+              disabled={deleting}
+              startIcon={deleting ? <CircularProgress size={16} /> : <DeleteSweepIcon />}
+              sx={{ background: '#d32f2f' }}
+            >
+              {deleting ? 'Verwijderen...' : `Verwijder ${selectedOrderIds.length} geselecteerde`}
+            </Button>
+          )}
+          <Button
+            variant="outlined"
+            onClick={handleDeleteAll}
+            disabled={deleting || orders.length === 0}
+            startIcon={deleting ? <CircularProgress size={16} /> : <DeleteSweepIcon />}
+            sx={{ borderColor: '#8B0000', color: '#8B0000' }}
+          >
+            {deleting ? 'Verwijderen...' : 'Verwijder Alles'}
+          </Button>
+          <Button
+            variant="outlined"
+            onClick={handleRenumberReceipts}
+            disabled={renumbering}
+            startIcon={renumbering ? <CircularProgress size={16} /> : <NumbersIcon />}
+            sx={{ borderColor: '#FFA500', color: '#FFA500' }}
+          >
+            {renumbering ? 'Hernummeren...' : 'Hernummer Bonnen'}
+          </Button>
+          <Button variant="contained" onClick={loadOrders} sx={{ background: '#e52525' }}>
+            <RefreshIcon sx={{ mr: 1 }} />
+            Vernieuwen
+          </Button>
+        </Box>
       </Box>
 
       {error && (
@@ -381,6 +531,14 @@ const OrdersOverview = () => {
         <Table>
           <TableHead>
             <TableRow sx={{ background: '#fff5f5' }}>
+              <TableCell padding="checkbox" sx={{ fontWeight: 600, color: '#d32f2f' }}>
+                <Checkbox
+                  indeterminate={selectedOrderIds.length > 0 && selectedOrderIds.length < filteredOrders.length}
+                  checked={filteredOrders.length > 0 && selectedOrderIds.length === filteredOrders.length}
+                  onChange={handleSelectAll}
+                  sx={{ color: '#d32f2f', '&.Mui-checked': { color: '#d32f2f' } }}
+                />
+              </TableCell>
               <TableCell sx={{ fontWeight: 600, color: '#d32f2f' }}>Bonnummer</TableCell>
               <TableCell sx={{ fontWeight: 600, color: '#d32f2f' }}>Klant</TableCell>
               <TableCell sx={{ fontWeight: 600, color: '#d32f2f' }}>Datum</TableCell>
@@ -392,7 +550,7 @@ const OrdersOverview = () => {
           <TableBody>
             {filteredOrders.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
+                <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
                   <Typography color="text.secondary">
                     {searchTerm || statusFilter !== 'all' || dateFilter !== 'all' 
                       ? 'Geen bestellingen gevonden met deze filters' 
@@ -402,7 +560,21 @@ const OrdersOverview = () => {
               </TableRow>
             ) : (
               filteredOrders.map((order) => (
-                <TableRow key={order.id} hover>
+                <TableRow 
+                  key={order.id} 
+                  hover
+                  selected={selectedOrderIds.includes(order.id)}
+                  sx={{
+                    backgroundColor: selectedOrderIds.includes(order.id) ? '#fff3e0' : 'inherit'
+                  }}
+                >
+                  <TableCell padding="checkbox">
+                    <Checkbox
+                      checked={selectedOrderIds.includes(order.id)}
+                      onChange={() => handleToggleSelect(order.id)}
+                      sx={{ color: '#d32f2f', '&.Mui-checked': { color: '#d32f2f' } }}
+                    />
+                  </TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>{order.bonnummer}</TableCell>
                   <TableCell>{order.klant_naam || 'Geen klant'}</TableCell>
                   <TableCell>

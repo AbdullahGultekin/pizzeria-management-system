@@ -178,6 +178,29 @@ export const orderAPI = {
     })
     return response.data
   },
+  trackOrder: async (bonnummer: string, phone: string) => {
+    // Track order by bonnummer with REQUIRED phone verification for security
+    if (!phone || !phone.trim()) {
+      throw new Error('Telefoonnummer is verplicht om je bestelling te volgen')
+    }
+    const response = await axios.get(`${API_BASE_URL}/orders/track/${bonnummer}`, {
+      params: { phone: phone.trim() },
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    })
+    return response.data
+  },
+  trackOrdersByPhone: async (phone: string) => {
+    // Get all orders for a phone number
+    const response = await axios.get(`${API_BASE_URL}/orders/track/by-phone`, {
+      params: { phone },
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    })
+    return response.data
+  },
   create: async (data: any) => {
     const response = await api.post('/orders', data)
     return response.data
@@ -197,6 +220,14 @@ export const orderAPI = {
   },
   delete: async (id: number) => {
     await api.delete(`/orders/${id}`)
+  },
+  deleteMultiple: async (orderIds?: number[]) => {
+    const response = await api.post('/orders/delete-multiple', orderIds || [])
+    return response.data
+  },
+  renumberReceipts: async () => {
+    const response = await api.post('/orders/renumber')
+    return response.data
   },
 }
 
@@ -379,6 +410,16 @@ export const addressAPI = {
     const response = await api.get('/addresses/postcodes')
     // Backend returns { "postcodes": [...] }
     return response.data.postcodes || []
+  },
+  addStreet: async (straat: string) => {
+    // Public endpoint without authentication
+    const response = await axios.post(`${API_BASE_URL}/addresses/streets`, null, {
+      params: { straat },
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    })
+    return response.data
   },
 }
 

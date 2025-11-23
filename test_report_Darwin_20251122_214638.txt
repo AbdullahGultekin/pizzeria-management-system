@@ -1,0 +1,49 @@
+======================================================================
+PIZZERIA MANAGEMENT SYSTEM - TEST REPORT
+======================================================================
+Platform: Darwin 25.1.0
+Python: 3.13.3 (v3.13.3:6280bb54784, Apr  8 2025, 10:47:54) [Clang 15.0.0 (clang-1500.3.9.4)]
+Test Date: 2025-11-22 21:46:38
+======================================================================
+
+✓ Passed: 21
+✗ Failed: 0
+⚠ Warnings: 1
+⊘ Skipped: 1
+
+======================================================================
+DETAILED RESULTS
+======================================================================
+
+
+WARNINGS:
+----------------------------------------------------------------------
+  Optional: win32print: Windows printer support not available
+
+PASSED:
+----------------------------------------------------------------------
+  Platform Detection: Platform: Darwin
+  Module Imports: All required modules imported
+  Optional: qrcode: QR code generation
+  Optional: PIL: Image processing
+  Optional: phonenumbers: Phone validation
+  File Structure: All required files present
+  Optional file: straatnamen.json: Found
+  Optional file: logo.ico: Found
+  Optional file: pizzeria.db: Found
+  JSON: menu.json: Valid JSON (20 items)
+  JSON: extras.json: Valid JSON (20 items)
+  JSON: settings.json: Valid JSON (6 items)
+  Database Connection: All required tables present (13 total)
+  Database: afhaal column: afhaal column exists
+  Sound Support: afplay available for macOS
+  Path Handling: Absolute: Absolute path: /Users/abdullahgultekin/Cursor projects/Deskcomputer/test_suite.py
+  Path Handling: Relative: Relative paths work
+  Path Handling: Separators: Unix path separators handled
+  Clipboard Monitor: Tkinter clipboard available
+  Encoding Support: UTF-8 encoding works correctly
+  Tkinter UI: Tkinter UI can be initialized
+
+SKIPPED:
+----------------------------------------------------------------------
+  Printer Support: Printer support only available on Windows

@@ -154,26 +154,42 @@ async def register_customer(
     """
     Register a new customer account (public endpoint).
     """
-    # Check if email already exists
-    existing_email = db.query(Customer).filter(Customer.email == customer_data.email).first()
-    if existing_email:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="E-mailadres is al geregistreerd"
-        )
+    logger.info(f"Registration attempt for email: {customer_data.email}, phone: {customer_data.telefoon}")
     
-    # Check if phone already exists
-    existing_phone = db.query(Customer).filter(Customer.telefoon == customer_data.telefoon).first()
-    if existing_phone:
+    try:
+        # Check if email already exists
+        existing_email = db.query(Customer).filter(Customer.email == customer_data.email).first()
+        if existing_email:
+            logger.warning(f"Registration failed: Email already exists - {customer_data.email}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="E-mailadres is al geregistreerd"
+            )
+        
+        # Check if phone already exists
+        existing_phone = db.query(Customer).filter(Customer.telefoon == customer_data.telefoon).first()
+        if existing_phone:
+            logger.warning(f"Registration failed: Phone already exists - {customer_data.telefoon}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Telefoonnummer is al geregistreerd"
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Error checking existing customer: {e}")
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Telefoonnummer is al geregistreerd"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Er is een fout opgetreden bij het controleren van bestaande gegevens"
         )
     
     # Hash password
     password_hash = get_password_hash(customer_data.password)
     
-    # Create customer (email not verified yet)
+    # Check if email verification is required
+    email_verification_required = settings.EMAIL_VERIFICATION_REQUIRED
+    
+    # Create customer
     db_customer = Customer(
         email=customer_data.email,
         password_hash=password_hash,
@@ -182,28 +198,41 @@ async def register_customer(
         straat=customer_data.straat,
         huisnummer=customer_data.huisnummer,
         plaats=customer_data.plaats,
-        email_verified=0  # Not verified yet
+        email_verified=1 if not email_verification_required else 0  # Auto-verify if verification disabled
     )
     db.add(db_customer)
     db.commit()
     db.refresh(db_customer)
     
-    # Generate verification token
-    verification_token = email_verification_service.create_verification_token(db_customer, db)
-    
-    # Send verification email
-    base_url = request.headers.get("Origin") or "http://localhost:3000"
-    await email_verification_service.send_verification_email(db_customer, base_url)
-    
-    logger.info(f"Customer registered (unverified): {db_customer.id} - {db_customer.email}")
-    
-    # Return response indicating email verification is required
-    # Don't return access token yet - customer must verify email first
-    return CustomerRegisterResponse(
-        message="Registratie succesvol! Controleer je e-mail om je account te verifiëren. Je kunt pas inloggen na verificatie.",
-        email=db_customer.email,
-        requires_verification=True
-    )
+    if email_verification_required:
+        # Generate verification token
+        verification_token = email_verification_service.create_verification_token(db_customer, db)
+        
+        # Send verification email
+        base_url = request.headers.get("Origin") or "http://localhost:3000"
+        email_sent = await email_verification_service.send_verification_email(db_customer, base_url)
+        
+        if email_sent:
+            logger.info(f"Customer registered (unverified): {db_customer.id} - {db_customer.email} - Verification email sent")
+        else:
+            logger.warning(f"Customer registered (unverified): {db_customer.id} - {db_customer.email} - Verification email FAILED to send")
+        
+        # Return response indicating email verification is required
+        return CustomerRegisterResponse(
+            message="Registratie succesvol! Controleer je e-mail om je account te verifiëren. Je kunt pas inloggen na verificatie.",
+            email=db_customer.email,
+            requires_verification=True
+        )
+    else:
+        # Email verification disabled - auto-verify and return success
+        logger.info(f"Customer registered (auto-verified): {db_customer.id} - {db_customer.email}")
+        
+        # Return success message (user can login immediately)
+        return CustomerRegisterResponse(
+            message="Registratie succesvol! Je kunt nu direct inloggen.",
+            email=db_customer.email,
+            requires_verification=False
+        )
 
 
 @router.post("/customers/public/login", response_model=CustomerTokenResponse)
@@ -231,8 +260,8 @@ async def login_customer(
             detail="Ongeldig e-mailadres of wachtwoord"
         )
     
-    # Check if email is verified (REQUIRED)
-    if customer.email_verified != 1:
+    # Check if email is verified (only if verification is required)
+    if settings.EMAIL_VERIFICATION_REQUIRED and customer.email_verified != 1:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Je e-mailadres is nog niet geverifieerd. Controleer je inbox en klik op de verificatielink. Je kunt ook een nieuwe link aanvragen."

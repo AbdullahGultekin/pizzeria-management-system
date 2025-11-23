@@ -53,12 +53,15 @@ const OrderStatusPage = () => {
   const [error, setError] = useState('')
   const [isConnected, setIsConnected] = useState(false)
 
-  // WebSocket for real-time status updates
+  // WebSocket for real-time status updates (optional)
   const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'
-  const wsUrl = API_BASE_URL.replace('/api/v1', '') + '/ws'
+  const baseUrl = API_BASE_URL.replace('/api/v1', '')
+  const wsUrl = baseUrl.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:') + '/ws'
   
   const { sendMessage, connect: wsConnect } = useWebSocket({
     url: wsUrl,
+    autoConnect: false, // Don't auto-connect
+    reconnectInterval: 10000, // Less aggressive reconnection
     onMessage: (message) => {
       if (message.type === 'order_status_changed' && message.data) {
         const updatedOrder = message.data
@@ -81,7 +84,6 @@ const OrderStatusPage = () => {
     onClose: () => {
       setIsConnected(false)
     },
-    autoConnect: false, // We'll connect manually when order is loaded
   })
 
   const handleSearch = async () => {

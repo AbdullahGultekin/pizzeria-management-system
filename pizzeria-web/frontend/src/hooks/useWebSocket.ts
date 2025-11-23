@@ -38,12 +38,20 @@ export const useWebSocket = (options: UseWebSocketOptions = {}) => {
   const shouldReconnectRef = useRef(true)
 
   const connect = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
+    if (wsRef.current?.readyState === WebSocket.OPEN || wsRef.current?.readyState === WebSocket.CONNECTING) {
+      return
+    }
+
+    // Don't try to connect if URL is invalid
+    if (!url || url === 'undefined/ws') {
+      console.warn('WebSocket URL is invalid, skipping connection')
       return
     }
 
     try {
-      const ws = new WebSocket(url)
+      // Convert http:// to ws:// and https:// to wss://
+      const wsUrl = url.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:')
+      const ws = new WebSocket(wsUrl)
       wsRef.current = ws
 
       ws.onopen = () => {
@@ -66,20 +74,29 @@ export const useWebSocket = (options: UseWebSocketOptions = {}) => {
         }
       }
 
-      ws.onclose = () => {
+      ws.onclose = (event) => {
         setIsConnected(false)
         onClose?.()
 
-        // Attempt to reconnect if should reconnect
-        if (shouldReconnectRef.current) {
-          reconnectTimeoutRef.current = setTimeout(() => {
-            connect()
-          }, reconnectInterval)
+        // Only reconnect if it wasn't a normal closure and we should reconnect
+        // Don't spam reconnect attempts if backend is not available
+        if (shouldReconnectRef.current && autoConnect && event.code !== 1000) {
+          // Limit reconnect attempts - exponential backoff
+          const attemptCount = (wsRef.current as any)?._reconnectAttempts || 0
+          const maxAttempts = 2 // Only try 2 times, then give up
+          
+          if (attemptCount < maxAttempts) {
+            (wsRef.current as any)._reconnectAttempts = attemptCount + 1
+            reconnectTimeoutRef.current = setTimeout(() => {
+              connect()
+            }, reconnectInterval * Math.pow(2, attemptCount)) // Exponential backoff
+          }
         }
       }
 
       ws.onerror = (error) => {
-        console.error('WebSocket error:', error)
+        // Silently handle WebSocket errors - it's optional functionality
+        // Don't spam console with errors if backend doesn't support WebSocket
         onError?.(error)
       }
     } catch (error) {

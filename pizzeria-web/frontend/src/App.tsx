@@ -9,6 +9,7 @@ import AdminPage from './pages/AdminPage'
 import HistoryPage from './pages/HistoryPage'
 import PublicMenuPage from './pages/PublicMenuPage'
 import OrderStatusPage from './pages/OrderStatusPage'
+import OrderTrackingPage from './pages/OrderTrackingPage'
 import ContactPage from './pages/ContactPage'
 import CartPage from './pages/CartPage'
 import CheckoutPage from './pages/CheckoutPage'
@@ -40,6 +41,7 @@ function App() {
               <Route path="/checkout" element={<CheckoutPage />} />
               <Route path="/contact" element={<ContactPage />} />
               <Route path="/status" element={<OrderStatusPage />} />
+              <Route path="/track" element={<OrderTrackingPage />} />
               <Route path="/verify-email" element={<VerifyEmailPage />} />
               <Route path="/login" element={<LoginPage />} />
               <Route

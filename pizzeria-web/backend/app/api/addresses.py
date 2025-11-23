@@ -1,7 +1,7 @@
 """
 Address API endpoints for street names and address lookup.
 """
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional, Dict
 from pydantic import BaseModel
@@ -196,4 +196,81 @@ async def get_address_suggestions(
         logger.warning(f"Error getting address suggestions: {e}")
     
     return {"suggestions": suggestions}
+
+
+@router.post("/addresses/streets")
+async def add_street_name(straat: str = Query(..., description="Straatnaam om toe te voegen")):
+    """
+    Add a new street name to straatnamen.json if it doesn't exist (public endpoint).
+    """
+    if not straat or not straat.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Straatnaam is verplicht"
+        )
+    
+    straat_clean = straat.strip()
+    
+    try:
+        # Get the project root (where straatnamen.json should be)
+        current_file = os.path.abspath(__file__)
+        backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(current_file)))  # pizzeria-web
+        project_root = os.path.dirname(backend_dir)  # Project root (Deskcomputer)
+        
+        # Try multiple possible paths
+        possible_paths = [
+            os.path.join(project_root, "straatnamen.json"),  # Project root
+            os.path.join(os.path.dirname(project_root), "straatnamen.json"),  # One level up from project
+            "straatnamen.json",  # Current directory
+            os.path.join("..", "straatnamen.json"),  # Parent directory
+            os.path.join("..", "..", "straatnamen.json"),  # Two levels up
+            os.path.join("..", "..", "..", "straatnamen.json"),  # Three levels up
+        ]
+        
+        json_path = None
+        for path in possible_paths:
+            abs_path = os.path.abspath(path) if not os.path.isabs(path) else path
+            if os.path.exists(abs_path):
+                json_path = abs_path
+                break
+        
+        if not json_path:
+            logger.error(f"straatnamen.json not found. Cannot add street name.")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Straatnamen bestand niet gevonden"
+            )
+        
+        # Read existing streets
+        with open(json_path, "r", encoding="utf-8") as f:
+            streets = json.load(f)
+        
+        # Check if street already exists (case-insensitive)
+        if not isinstance(streets, list):
+            streets = []
+        
+        straat_lower = straat_clean.lower()
+        if any(s.lower() == straat_lower for s in streets):
+            # Street already exists
+            return {"message": "Straatnaam bestaat al", "added": False}
+        
+        # Add new street
+        streets.append(straat_clean)
+        streets.sort()  # Keep sorted alphabetically
+        
+        # Write back to file
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(streets, f, ensure_ascii=False, indent=2)
+        
+        logger.info(f"Added new street name: {straat_clean} to {json_path}")
+        return {"message": "Straatnaam toegevoegd", "added": True, "street": straat_clean}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error adding street name: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Fout bij toevoegen straatnaam: {str(e)}"
+        )
 
