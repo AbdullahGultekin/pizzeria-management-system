@@ -27,6 +27,7 @@ class AfhaalManager:
         self.parent = parent
         self.tree: Optional[ttk.Treeview] = None
         self.filter_vars: Dict[str, tk.Variable] = {}
+        self.total_label: Optional[tk.Label] = None
         
         # Setup UI
         self.setup_ui()
@@ -80,6 +81,27 @@ class AfhaalManager:
         
         # Setup table
         self.setup_table(table_frame)
+        
+        # Total label at bottom
+        total_frame = tk.Frame(main_frame, bg="white", padx=10, pady=5)
+        total_frame.pack(fill=tk.X, side=tk.BOTTOM)
+        
+        tk.Label(
+            total_frame,
+            text="Totaal alle bestellingen:",
+            font=("Arial", 11, "bold"),
+            bg="white",
+            fg="#333"
+        ).pack(side=tk.LEFT, padx=(0, 10))
+        
+        self.total_label = tk.Label(
+            total_frame,
+            text="€0.00",
+            font=("Arial", 12, "bold"),
+            bg="white",
+            fg="#FF9800"
+        )
+        self.total_label.pack(side=tk.LEFT)
         
         # Load initial data
         self.load_orders()
@@ -188,6 +210,9 @@ class AfhaalManager:
         
         # Bind click on status column to change status
         self.tree.bind("<Button-1>", self._on_tree_click)
+        
+        # Update total
+        self._update_total(orders)
     
     def _on_tree_click(self, event: tk.Event) -> None:
         """Handle click on tree to change status."""
@@ -231,6 +256,9 @@ class AfhaalManager:
             self.tree.item(item_id, tags=("afhaal", f"status_{new_status.lower()}"))
             
             logger.info(f"Status updated for order {order_id}: {current_status} -> {new_status}")
+            
+            # Update total (recalculate from all orders in tree)
+            self._update_total_from_tree()
             
         except (ValueError, Exception) as e:
             logger.exception(f"Error toggling status: {e}")
@@ -279,6 +307,34 @@ class AfhaalManager:
         except Exception as e:
             logger.exception(f"Error fetching pickup orders: {e}")
             raise DatabaseError(f"Kon afhaal bestellingen niet ophalen: {e}") from e
+    
+    def _update_total(self, orders: List[Dict]) -> None:
+        """Update the total label with sum of all orders."""
+        if not self.total_label:
+            return
+        
+        total = sum(order.get('totaal', 0) for order in orders)
+        self.total_label.config(text=f"€{total:.2f}")
+    
+    def _update_total_from_tree(self) -> None:
+        """Update total by recalculating from all items in tree."""
+        if not self.total_label or not self.tree:
+            return
+        
+        total = 0.0
+        for item_id in self.tree.get_children():
+            values = self.tree.item(item_id, "values")
+            if values and len(values) > 2:
+                # Totaal is in column 2 (index 2), format: "€XX.XX"
+                totaal_str = values[2]
+                try:
+                    # Remove € and convert to float
+                    totaal_value = float(totaal_str.replace("€", "").replace(",", "."))
+                    total += totaal_value
+                except (ValueError, AttributeError):
+                    continue
+        
+        self.total_label.config(text=f"€{total:.2f}")
     
     def view_order_details(self, event: Optional[tk.Event] = None) -> None:
         """View details of selected order."""

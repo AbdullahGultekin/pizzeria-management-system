@@ -486,3 +486,21 @@ _tkinter.TclError: bad anchor "right": must be n, ne, e, se, s, sw, w, nw, or ce
 2025-11-22 19:10:34 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:315 - Connection error - is backend running? HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/v1/orders/online/pending (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000025E74701430>: Failed to establish a new connection: [WinError 10061] Kan geen verbinding maken omdat de doelcomputer de verbinding actief heeft geweigerd'))
 2025-11-22 19:10:45 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:315 - Connection error - is backend running? HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/v1/orders/online/pending (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000025E747011F0>: Failed to establish a new connection: [WinError 10061] Kan geen verbinding maken omdat de doelcomputer de verbinding actief heeft geweigerd'))
 2025-11-22 19:10:56 - pizzeria.modules.online_bestellingen - ERROR - online_bestellingen.py:315 - Connection error - is backend running? HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/v1/orders/online/pending (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000025E74700110>: Failed to establish a new connection: [WinError 10061] Kan geen verbinding maken omdat de doelcomputer de verbinding actief heeft geweigerd'))
+2025-11-22 20:37:01 - pizzeria.database - ERROR - database.py:547 - Fout tijdens migratie van klanten uit CSV: [Errno 2] No such file or directory: 'C:\\Users\\abdul\\AppData\\Local\\Temp\\_MEI248162\\base_library.zip'
+Traceback (most recent call last):
+  File "database.py", line 525, in migrate_klanten_from_csv
+    with open("klanten.csv", 'r', encoding='latin-1', newline='') as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "encodings\__init__.py", line 99, in search_function
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1322, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 1262, in _find_spec
+  File "<frozen importlib._bootstrap_external>", line 1528, in find_spec
+  File "<frozen importlib._bootstrap_external>", line 1502, in _get_spec
+  File "<frozen zipimport>", line 111, in find_spec
+  File "<frozen importlib._bootstrap>", line 675, in spec_from_loader
+  File "<frozen importlib._bootstrap_external>", line 822, in spec_from_file_location
+  File "<frozen zipimport>", line 170, in get_filename
+  File "<frozen zipimport>", line 700, in _get_module_code
+  File "<frozen zipimport>", line 534, in _get_data
+FileNotFoundError: [Errno 2] No such file or directory: 'C:\\Users\\abdul\\AppData\\Local\\Temp\\_MEI248162\\base_library.zip'

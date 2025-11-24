@@ -507,8 +507,8 @@ class CourierManager:
     
     def setup_table_new(self, parent: tk.Widget) -> None:
         """Setup orders table with new columns matching example."""
-        # Define columns - removed postcode, added koerier
-        columns = ("soort", "nummer", "totaal", "straat", "huis_nr", "gemeente", "tijd", "vertrek", "betaalmethode", "koerier")
+        # Define columns - removed postcode, added telefoon and koerier
+        columns = ("soort", "nummer", "totaal", "straat", "huis_nr", "gemeente", "telefoon", "tijd", "vertrek", "betaalmethode", "koerier")
         headers = {
             "soort": "Soort",
             "nummer": "Nummer",
@@ -516,6 +516,7 @@ class CourierManager:
             "straat": "Straat",
             "huis_nr": "Huis nr.",
             "gemeente": "Gemeente",
+            "telefoon": "Telefoon",
             "tijd": "Tijd",
             "vertrek": "Vertrek",
             "betaalmethode": "Betaalmethode",
@@ -528,6 +529,7 @@ class CourierManager:
             "straat": 150,     # Groter voor volledige straatnamen
             "huis_nr": 30,     # Iets kleiner
             "gemeente": 100,   # Iets kleiner maar nog leesbaar
+            "telefoon": 100,   # Telefoonnummer kolom
             "tijd": 35,        # Iets kleiner
             "vertrek": 35,     # Iets kleiner
             "betaalmethode": 40,  # Iets kleiner
@@ -911,14 +913,19 @@ class CourierManager:
             messagebox.showerror("Fout", str(e))
             return
         
-        # Get online orders from API (exclude afhaal/pickup orders)
+        # Get online orders from API (exclude afhaal/pickup orders) - SINGLE CALL
         online_orders = self.fetch_online_orders(order_date)
+        online_orders_cache = {}
+        
         if online_orders:
             # Convert online orders to same format as local orders
             for online_order in online_orders:
                 # Skip afhaal/pickup orders - they should only appear in Afhaal tab
                 if online_order.get('afhaal') or online_order.get('betaalmethode') == 'pickup':
                     continue
+                
+                # Cache for later lookups
+                online_orders_cache[online_order['id']] = online_order
                 
                 # Parse address
                 klant_adres = online_order.get('klant_adres', '')
@@ -950,11 +957,6 @@ class CourierManager:
                     'online': True  # Mark as online order
                 }
                 orders.append(order_dict)
-        
-        # Cache online orders data for lookups
-        online_orders_cache = {}
-        for oo in self.fetch_online_orders(order_date):
-            online_orders_cache[oo['id']] = oo
         
         # Get filter values
         search_text = self.filter_vars.get("search", tk.StringVar()).get()
@@ -1023,6 +1025,9 @@ class CourierManager:
             # Get koerier name (already extracted above)
             koerier_display = koerier_naam if koerier_naam else ""
             
+            # Get telefoon number
+            telefoon = order.get('telefoon', '')
+            
             self.tree.insert(
                 "",
                 tk.END,
@@ -1034,6 +1039,7 @@ class CourierManager:
                     order.get('straat', ''),
                     order.get('huisnummer', ''),
                     gemeente,
+                    telefoon,
                     order.get('tijd', ''),
                     vertrek,
                     betaalmethode,
@@ -1042,10 +1048,18 @@ class CourierManager:
                 tags=tags
             )
         
-        # Recalculate totals (if settlement frame exists)
+        # Recalculate totals asynchronously (non-blocking) to prevent UI freeze
         if hasattr(self, 'totals_var') and self.totals_var:
+            root = self.parent.winfo_toplevel()
+            root.after_idle(lambda: self._recalculate_totals_async())
+    
+    def _recalculate_totals_async(self) -> None:
+        """Recalculate totals asynchronously (non-blocking)."""
+        try:
             self.recalculate_courier_totals()
             self.recalculate_total_payment()
+        except Exception as e:
+            logger.exception("Error in async totals recalculation")
     
     def recalculate_courier_totals(self) -> None:
         """Recalculate totals for each courier."""
@@ -1079,7 +1093,7 @@ class CourierManager:
         except Exception as e:
             logger.warning(f"Error calculating local order totals: {e}")
         
-        # Get online orders from API (exclude afhaal/pickup orders)
+        # Get online orders from API (exclude afhaal/pickup orders) - with timeout to prevent blocking
         try:
             online_orders = self.fetch_online_orders(order_date)
             for online_order in online_orders:
@@ -1117,6 +1131,14 @@ class CourierManager:
         
         # Recalculate total payment
         self.recalculate_total_payment()
+    
+    def _update_payment_async(self, naam: str) -> None:
+        """Update payment asynchronously for a specific courier."""
+        try:
+            self.recalculate_payment(naam)
+            self.recalculate_total_payment()
+        except Exception as e:
+            logger.exception(f"Error updating payment for {naam}: {e}")
     
     def recalculate_payment(self, naam: str) -> None:
         """Recalculate payment for a specific courier."""
@@ -1261,9 +1283,9 @@ class CourierManager:
                 if hasattr(self, 'totals_var') and self.totals_var and naam in self.totals_var:
                     current_total = self.totals_var[naam].get()
                     self.totals_var[naam].set(round(current_total + total_to_add, 2))
-                    # Quick payment update (no async delay)
-                    self.recalculate_payment(naam)
-                    self.recalculate_total_payment()
+                    # Update payment asynchronously to prevent blocking
+                    root = self.parent.winfo_toplevel()
+                    root.after_idle(lambda: self._update_payment_async(naam))
             
             # Assign online orders via API (async to not block)
             if online_order_ids:
@@ -1488,6 +1510,16 @@ def open_koeriers(root: tk.Tk) -> None:
     Args:
         root: Root widget (tab frame)
     """
+    # Check if manager already exists (reuse to prevent rebuilding UI on tab switch)
+    if hasattr(root, '_courier_manager'):
+        manager = root._courier_manager
+        # Just refresh orders if UI already exists
+        if manager.tree:
+            manager.load_orders(force=True)
+        return
+    
+    # Create new manager and store reference
     manager = CourierManager(root)
+    root._courier_manager = manager  # Store for reuse
     manager.load_couriers()
     manager.setup_ui()
