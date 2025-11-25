@@ -345,6 +345,21 @@ export const printerAPI = {
   },
 }
 
+// Payments API (Stripe)
+export const paymentsAPI = {
+  create: async (orderId: number, amount: number) => {
+    const response = await axios.post(`${API_BASE_URL}/payments/create`, {
+      order_id: orderId,
+      amount,
+    }, {
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    })
+    return response.data as { client_secret: string; payment_intent_id: string }
+  },
+}
+
 // Contact API
 export const contactAPI = {
   submit: async (data: {

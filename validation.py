@@ -298,6 +298,9 @@ def sanitize_string(value: str, max_length: int = 1000) -> str:
     # Remove control characters except newlines and tabs
     sanitized = re.sub(r'[\x00-\x08\x0B-\x0C\x0E-\x1F]', '', str(value))
     
+    # Replace newlines and tabs with spaces
+    sanitized = re.sub(r'[\n\t]', ' ', sanitized)
+    
     # Truncate if too long
     if len(sanitized) > max_length:
         sanitized = sanitized[:max_length]
@@ -305,5 +308,104 @@ def sanitize_string(value: str, max_length: int = 1000) -> str:
     
     return sanitized.strip()
 
+
+# Wrapper functions for testing that return True/False instead of raising exceptions
+# These are used by tests that expect boolean returns
+
+def validate_phone_bool(phone: str) -> bool:
+    """
+    Validate phone number, returning True/False instead of raising exceptions.
+    Used for testing.
+    
+    Args:
+        phone: Phone number string
+        
+    Returns:
+        True if valid, False otherwise
+    """
+    try:
+        validate_phone(phone)
+        return True
+    except ValidationError:
+        return False
+
+
+def validate_name_bool(name: str) -> bool:
+    """
+    Validate name, returning True/False instead of raising exceptions.
+    Used for testing.
+    
+    Args:
+        name: Name string
+        
+    Returns:
+        True if valid, False otherwise
+    """
+    try:
+        result = validate_name(name)
+        return result is not None
+    except ValidationError:
+        return False
+
+
+def validate_address_bool(address: str) -> bool:
+    """
+    Validate address, returning True/False instead of raising exceptions.
+    Used for testing.
+    
+    Args:
+        address: Address string
+        
+    Returns:
+        True if valid, False otherwise
+    """
+    try:
+        result = validate_address(address, required=True)
+        return bool(result)
+    except ValidationError:
+        return False
+
+
+def validate_house_number_bool(number: str) -> bool:
+    """
+    Validate house number, returning True/False instead of raising exceptions.
+    Used for testing.
+    
+    Args:
+        number: House number string
+        
+    Returns:
+        True if valid, False otherwise
+    """
+    try:
+        result = validate_house_number(number, required=True)
+        return bool(result)
+    except ValidationError:
+        return False
+
+
+def validate_postcode_bool(postcode: str, allowed_postcodes: list = None) -> bool:
+    """
+    Validate postcode, returning True/False instead of raising exceptions.
+    Used for testing.
+    
+    Args:
+        postcode: Postcode string
+        allowed_postcodes: List of allowed postcodes (optional for testing)
+        
+    Returns:
+        True if valid, False otherwise
+    """
+    try:
+        # For testing, if no allowed_postcodes provided, just check format
+        if allowed_postcodes is None:
+            # Basic format check: 4 digits
+            if postcode and postcode.strip() and re.match(r'^\d{4}$', postcode.strip()):
+                return True
+            return False
+        validate_postcode(postcode, allowed_postcodes)
+        return True
+    except ValidationError:
+        return False
 
 

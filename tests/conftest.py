@@ -37,7 +37,10 @@ def temp_db():
                 straat TEXT,
                 huisnummer TEXT,
                 plaats TEXT,
-                naam TEXT
+                naam TEXT,
+                totaal_bestellingen INTEGER DEFAULT 0,
+                totaal_besteed REAL DEFAULT 0.0,
+                laatste_bestelling TEXT
             )
         ''')
         cursor.execute('''
@@ -50,6 +53,9 @@ def temp_db():
                 opmerking TEXT,
                 bonnummer TEXT,
                 koerier_id INTEGER,
+                levertijd TEXT,
+                afhaal INTEGER DEFAULT 0,
+                status TEXT DEFAULT 'Nieuw',
                 FOREIGN KEY (klant_id) REFERENCES klanten(id)
             )
         ''')
@@ -63,6 +69,12 @@ def temp_db():
                 prijs REAL,
                 extras TEXT,
                 FOREIGN KEY (bestelling_id) REFERENCES bestellingen(id)
+            )
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS koeriers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                naam TEXT UNIQUE NOT NULL
             )
         ''')
         cursor.execute('''

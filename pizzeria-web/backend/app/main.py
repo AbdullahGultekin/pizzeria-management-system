@@ -125,7 +125,21 @@ async def health_check():
 
 
 # Import and include routers
-from app.api import customers, auth, orders, menu, extras, reports, websocket, printer, contact, addresses, settings as settings_api, order_tracking
+from app.api import (
+    customers,
+    auth,
+    orders,
+    menu,
+    extras,
+    reports,
+    websocket,
+    printer,
+    contact,
+    addresses,
+    settings as settings_api,
+    order_tracking,
+    payments,
+)
 app.include_router(auth.router, prefix=settings.API_V1_STR, tags=["auth"])
 app.include_router(customers.router, prefix=settings.API_V1_STR, tags=["customers"])
 app.include_router(orders.router, prefix=settings.API_V1_STR, tags=["orders"])
@@ -138,6 +152,7 @@ app.include_router(printer.router, prefix=settings.API_V1_STR, tags=["printer"])
 app.include_router(contact.router, prefix=settings.API_V1_STR, tags=["contact"])
 app.include_router(addresses.router, prefix=settings.API_V1_STR, tags=["addresses"])
 app.include_router(settings_api.router, prefix=settings.API_V1_STR, tags=["settings"])
+app.include_router(payments.router, prefix=settings.API_V1_STR, tags=["payments"])
 
 
 if __name__ == "__main__":

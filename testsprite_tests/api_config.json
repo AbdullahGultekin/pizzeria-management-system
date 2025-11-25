@@ -1,0 +1,113 @@
+{
+  "api_base_url": "http://localhost:8000",
+  "api_version_prefix": "/api/v1",
+  "authentication": {
+    "login_endpoint": "/api/v1/auth/login",
+    "method": "form-data",
+    "credentials": {
+      "admin": {
+        "username": "admin",
+        "password": "admin123"
+      },
+      "kassa": {
+        "username": "kassa",
+        "password": "kassa123"
+      }
+    }
+  },
+  "endpoints": {
+    "customers": {
+      "base": "/api/v1/customers",
+      "list": "/api/v1/customers",
+      "get": "/api/v1/customers/{id}",
+      "create": "/api/v1/customers",
+      "update": "/api/v1/customers/{id}",
+      "delete": "/api/v1/customers/{id}",
+      "search": "/api/v1/customers?search={query}",
+      "requires_auth": true
+    },
+    "orders": {
+      "base": "/api/v1/orders",
+      "list": "/api/v1/orders",
+      "get": "/api/v1/orders/{id}",
+      "create": "/api/v1/orders",
+      "update_status": "/api/v1/orders/{id}/status",
+      "delete": "/api/v1/orders/{id}",
+      "public_tracking": "/api/v1/orders/public/{bonnummer}",
+      "requires_auth": true
+    },
+    "menu": {
+      "base": "/api/v1/menu",
+      "public": "/api/v1/menu/public",
+      "admin": "/api/v1/menu",
+      "get_item": "/api/v1/menu/{id}",
+      "create": "/api/v1/menu",
+      "update": "/api/v1/menu/{id}",
+      "delete": "/api/v1/menu/{id}",
+      "categories": "/api/v1/menu/categories",
+      "create_category": "/api/v1/menu/categories",
+      "delete_category": "/api/v1/menu/categories/{id}",
+      "public_requires_auth": false,
+      "admin_requires_auth": true
+    },
+    "extras": {
+      "public": "/api/v1/extras/public",
+      "requires_auth": false
+    },
+    "reports": {
+      "daily": "/api/v1/reports/daily",
+      "monthly": "/api/v1/reports/monthly",
+      "z_report": "/api/v1/reports/z-report",
+      "requires_auth": true,
+      "required_role": "admin"
+    },
+    "printer": {
+      "print": "/api/v1/printer/print",
+      "info": "/api/v1/printer/info",
+      "requires_auth": true
+    },
+    "websocket": {
+      "endpoint": "ws://localhost:8000/ws",
+      "requires_auth": false
+    }
+  },
+  "data_structures": {
+    "customer": {
+      "create": {
+        "naam": "string",
+        "telefoon": "string",
+        "email": "string (optional)",
+        "straat": "string",
+        "huisnummer": "string",
+        "postcode": "string",
+        "gemeente": "string"
+      }
+    },
+    "order": {
+      "create": {
+        "items": [
+          {
+            "menu_item_id": "integer",
+            "quantity": "integer",
+            "options": "array"
+          }
+        ],
+        "bezorging": "boolean",
+        "afhaal": "boolean"
+      },
+      "status_update": {
+        "status": "string (Nieuw, In behandeling, Klaar, Onderweg, Afgeleverd, Geannuleerd)"
+      }
+    },
+    "menu_item": {
+      "create": {
+        "naam": "string",
+        "beschrijving": "string (optional)",
+        "categorie": "string",
+        "prijs": "float",
+        "beschikbaar": "integer (0 or 1)"
+      }
+    }
+  }
+}
+

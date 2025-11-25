@@ -1,11 +1,13 @@
 """Tests for OrderService."""
 
 import pytest
+from unittest.mock import patch
 from services.order_service import OrderService
 from exceptions import ValidationError
 
 
-def test_create_order_success(order_service, customer_service, sample_customer_data, sample_order_items):
+@patch('services.order_service.boek_voorraad_verbruik')
+def test_create_order_success(mock_boek_voorraad, order_service, customer_service, sample_customer_data, sample_order_items):
     """Test successfully creating an order."""
     # Create customer first
     customer_service.create_or_update_customer(

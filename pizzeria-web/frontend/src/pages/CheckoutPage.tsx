@@ -27,10 +27,11 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import CheckIcon from '@mui/icons-material/Check'
 import PhoneIcon from '@mui/icons-material/Phone'
 import EmailIcon from '@mui/icons-material/Email'
-import { orderAPI, customerAPI, addressAPI, settingsAPI } from '../services/api'
+import { orderAPI, customerAPI, addressAPI, settingsAPI, paymentsAPI } from '../services/api'
 import { brandColors } from '../theme/colors'
 import { getErrorMessage, formatValidationErrors } from '../utils/errorHandler'
 import CustomerAuth from '../components/CustomerAuth'
+import { CardElement, useStripe, useElements } from '@stripe/react-stripe-js'
 
 interface CartItem {
   id: string
@@ -56,6 +57,8 @@ interface CustomerData {
 
 const CheckoutPage = () => {
   const navigate = useNavigate()
+  const stripe = useStripe()
+  const elements = useElements()
   const [cartItems, setCartItems] = useState<CartItem[]>([])
   const [customerData, setCustomerData] = useState<CustomerData>({
     naam: '',
@@ -78,6 +81,8 @@ const CheckoutPage = () => {
   const [minAmountWarning, setMinAmountWarning] = useState('')
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [authDialogOpen, setAuthDialogOpen] = useState(false)
+  const [paymentError, setPaymentError] = useState<string | null>(null)
+  const [paymentProcessing, setPaymentProcessing] = useState(false)
 
   useEffect(() => {
     // Load cart from localStorage
@@ -295,6 +300,7 @@ const CheckoutPage = () => {
 
     setSubmitting(true)
     setError('')
+    setPaymentError(null)
 
     try {
       // Find or create customer
@@ -364,14 +370,50 @@ const CheckoutPage = () => {
         betaalmethode: customerData.betaalmethode || 'cash',
       })
 
+      // Als betaalmethode Stripe/online is, eerst betaling uitvoeren
+      if (customerData.betaalmethode === 'online') {
+        if (!stripe || !elements) {
+          throw new Error('Betaalsysteem (Stripe) is niet beschikbaar. Probeer later opnieuw.')
+        }
+
+        setPaymentProcessing(true)
+
+        // Maak PaymentIntent via backend
+        const payment = await paymentsAPI.create(order.id, totaal)
+
+        const card = elements.getElement(CardElement)
+        if (!card) {
+          throw new Error('Geen kaartveld gevonden. Vernieuw de pagina en probeer opnieuw.')
+        }
+
+        const result = await stripe.confirmCardPayment(payment.client_secret, {
+          payment_method: {
+            card,
+            billing_details: {
+              name: customerData.naam,
+              email: customerData.email,
+              phone: customerData.telefoon,
+            },
+          },
+        })
+
+        if (result.error) {
+          console.error('Stripe payment error:', result.error)
+          setPaymentError(result.error.message || 'Betaling mislukt. Probeer een andere kaart of betaalmethode.')
+          setPaymentProcessing(false)
+          // We laten de order bestaan maar tonen geen success scherm
+          return
+        }
+      }
+
       setOrderNumber(order.bonnummer || '')
       setOrderSuccess(true)
-      
+
       // Clear cart
       localStorage.removeItem('cart')
       setCartItems([])
 
-      // Redirect to tracking page after 3 seconds
+      // Redirect to tracking page after 3 seconden
       setTimeout(() => {
         navigate(`/track?bonnummer=${order.bonnummer}`)
       }, 3000)
@@ -385,6 +427,7 @@ const CheckoutPage = () => {
       }
     } finally {
       setSubmitting(false)
+      setPaymentProcessing(false)
     }
   }
 
@@ -616,6 +659,12 @@ const CheckoutPage = () => {
           {error && (
             <Alert severity="error" sx={{ mb: 3, borderRadius: '10px' }}>
               {error}
+            </Alert>
+          )}
+
+          {paymentError && (
+            <Alert severity="error" sx={{ mb: 3, borderRadius: '10px' }}>
+              {paymentError}
             </Alert>
           )}
 
@@ -867,6 +916,7 @@ const CheckoutPage = () => {
                     <MenuItem value="">Selecteer een betaalmethode</MenuItem>
                     <MenuItem value="cash">💰 Contant bij bezorging</MenuItem>
                     <MenuItem value="bancontact">💳 Bancontact bij bezorging</MenuItem>
+                    <MenuItem value="online">🌐 Online betalen (kaart / Bancontact / iDEAL via Stripe)</MenuItem>
                   </Select>
                   {errors.betaalmethode && (
                     <Typography variant="caption" color="error" sx={{ mt: 0.5, ml: 1.75 }}>
@@ -875,6 +925,41 @@ const CheckoutPage = () => {
                   )}
                 </FormControl>
               </Grid>
+              {customerData.betaalmethode === 'online' && (
+                <Grid item xs={12}>
+                  <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 600 }}>
+                    Kaartgegevens
+                  </Typography>
+                  <Box
+                    sx={{
+                      border: '1px solid #ddd',
+                      borderRadius: '8px',
+                      padding: '12px',
+                      bgcolor: '#fafafa',
+                    }}
+                  >
+                    <CardElement
+                      options={{
+                        style: {
+                          base: {
+                            fontSize: '16px',
+                            color: '#424770',
+                            '::placeholder': {
+                              color: '#aab7c4',
+                            },
+                          },
+                          invalid: {
+                            color: '#9e2146',
+                          },
+                        },
+                      }}
+                    />
+                  </Box>
+                  <Typography variant="caption" sx={{ mt: 1, display: 'block', color: '#666' }}>
+                    Betalingen worden veilig verwerkt via Stripe. Wij slaan geen kaartgegevens op.
+                  </Typography>
+                </Grid>
+              )}
               <Grid item xs={12}>
                 <TextField
                   fullWidth

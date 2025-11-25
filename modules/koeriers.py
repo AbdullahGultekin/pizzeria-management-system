@@ -506,9 +506,9 @@ class CourierManager:
         pass
     
     def setup_table_new(self, parent: tk.Widget) -> None:
-        """Setup orders table with new columns matching example."""
-        # Define columns - removed postcode, added telefoon and koerier
-        columns = ("soort", "nummer", "totaal", "straat", "huis_nr", "gemeente", "telefoon", "tijd", "vertrek", "betaalmethode", "koerier")
+        """Setup orders table with optimized columns for courier assignment."""
+        # Define columns - removed postcode and betaalmethode, added telefoon and koerier
+        columns = ("soort", "nummer", "totaal", "straat", "huis_nr", "gemeente", "telefoon", "tijd", "vertrek", "koerier")
         headers = {
             "soort": "Soort",
             "nummer": "Nummer",
@@ -519,7 +519,6 @@ class CourierManager:
             "telefoon": "Telefoon",
             "tijd": "Tijd",
             "vertrek": "Vertrek",
-            "betaalmethode": "Betaalmethode",
             "koerier": "Koerier"
         }
         widths = {
@@ -532,8 +531,7 @@ class CourierManager:
             "telefoon": 100,   # Telefoonnummer kolom
             "tijd": 35,        # Iets kleiner
             "vertrek": 35,     # Iets kleiner
-            "betaalmethode": 40,  # Iets kleiner
-            "koerier": 50     # Iets kleiner
+            "koerier": 80     # Groter zodat volledige koeriernaam zichtbaar is
         }
         
         # Create Treeview with optimized height for better visibility
@@ -993,15 +991,6 @@ class CourierManager:
                 nummer = str(order.get('id', ''))
                 online_order_data = None
             
-            # Get betaalmethode for online orders
-            betaalmethode = "Cash"
-            if online_order_data:
-                betaalmethode_raw = online_order_data.get('betaalmethode', 'cash')
-                if betaalmethode_raw == 'online':
-                    betaalmethode = "Bancontact/M.."
-                else:
-                    betaalmethode = "Cash"
-            
             # Parse plaats to get gemeente (only gemeente, no postcode)
             gemeente = ""
             plaats = order.get('plaats', '')
@@ -1042,7 +1031,6 @@ class CourierManager:
                     telefoon,
                     order.get('tijd', ''),
                     vertrek,
-                    betaalmethode,
                     koerier_display
                 ),
                 tags=tags
@@ -1266,7 +1254,7 @@ class CourierManager:
                     item_id = str(order_id)
                     if self.tree.exists(item_id):
                         values = list(self.tree.item(item_id, "values"))
-                        # Check correct number of columns (10 columns: soort, nummer, totaal, straat, huis_nr, gemeente, tijd, vertrek, betaalmethode, koerier)
+                        # Check correct number of columns (10 columns: soort, nummer, totaal, straat, huis_nr, gemeente, telefoon, tijd, vertrek, koerier)
                         if len(values) >= 10:
                             # Update koerier column (last column, index 9)
                             values[9] = naam
@@ -1309,7 +1297,7 @@ class CourierManager:
                 item_id = f"online_{order_id}"
                 if self.tree.exists(item_id):
                     values = list(self.tree.item(item_id, "values"))
-                    # Check correct number of columns (10 columns: soort, nummer, totaal, straat, huis_nr, gemeente, tijd, vertrek, betaalmethode, koerier)
+                    # Check correct number of columns (10 columns: soort, nummer, totaal, straat, huis_nr, gemeente, telefoon, tijd, vertrek, koerier)
                     if len(values) >= 10:
                         # Update koerier column (last column, index 9)
                         values[9] = naam

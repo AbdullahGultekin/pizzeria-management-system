@@ -343,7 +343,7 @@ def generate_bon_text(
         footer_prefix_blank,
         "Eet smakelijk!".center(BON_WIDTH),
         "Dank u en tot weerziens!".center(BON_WIDTH),
-        "Dins- tot Zon 17.00-20.30".center(BON_WIDTH),
+        "van Dins- tot Zondag/n van 17.00-20.30".center(BON_WIDTH),
         ""
     ]
     footer_str = "\n".join(footer_lines)

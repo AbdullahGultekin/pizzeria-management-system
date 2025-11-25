@@ -31,6 +31,9 @@ httpx==0.25.2
 phonenumbers>=8.13.0  # Phone number validation for all countries
 email-validator>=2.0.0  # Enhanced email validation
 
+# Payments
+stripe>=10.0.0
+
 # Optional: Windows printer support
 pywin32>=306; sys_platform == 'win32'
 

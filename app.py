@@ -816,7 +816,7 @@ info@pitapizzanapoli.be
                 win32print.WritePrinter(hprinter, b'Eet smakelijk\n')
                 win32print.WritePrinter(hprinter, ESC + b'E' + b'\x00')  # Bold uit
                 # Openingsuren
-                win32print.WritePrinter(hprinter, b'Van Dins- tot Zon\n vanaf 17 u Tot 20u30\n')
+                win32print.WritePrinter(hprinter, b'van Dins- tot Zondag\n van 17 u Tot 20u30\n')
                 
                 # Custom footer tekst (indien ingesteld)
                 custom_footer_text = self.app_settings.get("bon_footer_custom_text", "").strip()

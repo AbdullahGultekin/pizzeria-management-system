@@ -1,0 +1,52 @@
+[
+  {
+    "id": "TC001",
+    "title": "customer_management_api_functionality",
+    "description": "Verify that the customer management API endpoints correctly handle creating, searching, updating, and retrieving customer information with valid data and proper validation. API base: /api/v1/customers. Requires JWT authentication. Use form-data for login at /api/v1/auth/login with admin/admin123. Customer fields: naam, telefoon, email, straat, huisnummer, postcode, gemeente."
+  },
+  {
+    "id": "TC002",
+    "title": "order_management_api_status_workflow",
+    "description": "Test the order management API endpoints for creating orders, updating order statuses through the full workflow (Nieuw, In behandeling, Klaar, Onderweg, Afgeleverd, Geannuleerd), and real-time tracking functionality. API base: /api/v1/orders. Requires JWT authentication. Order payload: {items: [{menu_item_id, quantity, options}], bezorging: boolean, afhaal: boolean}. Status update: PUT /api/v1/orders/{id}/status with {status: string}."
+  },
+  {
+    "id": "TC003",
+    "title": "menu_management_api_crud_operations",
+    "description": "Validate the menu management API endpoints for adding, updating, deleting, and retrieving menu items, categories, and product options including availability and pricing updates. API base: /api/v1/menu. Requires admin JWT authentication. Public endpoint: /api/v1/menu/public (no auth). Menu item fields: naam, beschrijving, categorie, prijs, beschikbaar. Categories: /api/v1/menu/categories."
+  },
+  {
+    "id": "TC004",
+    "title": "product_options_api_dynamic_pricing",
+    "description": "Ensure the product options API correctly manages extras such as vlees, bijgerecht, sauzen, and garnering with dynamic price calculations and proper option associations. Extras are configured in extras.json, not created via API. Use GET /api/v1/extras/public to retrieve extras. Test dynamic pricing by creating orders with options from extras.json."
+  },
+  {
+    "id": "TC005",
+    "title": "shopping_cart_api_quantity_and_options",
+    "description": "Test the shopping cart API for correct handling of quantity changes, product options display, and total price calculation. Shopping cart is frontend-only. Test menu retrieval from /api/v1/menu/public and price calculation logic. Verify extras from /api/v1/extras/public can be used in price calculations."
+  },
+  {
+    "id": "TC006",
+    "title": "authentication_authorization_api_jwt_roles",
+    "description": "Verify JWT-based authentication and role-based access control for Admin, Kassa, and Public users, ensuring secure login and restricted access to protected endpoints. Login endpoint: POST /api/v1/auth/login using form-data (data= not json=). Credentials: admin/admin123, kassa/kassa123. Admin endpoint: /api/v1/reports/daily. Kassa endpoint: /api/v1/orders. Public endpoint: /api/v1/menu/public."
+  },
+  {
+    "id": "TC007",
+    "title": "delivery_management_api_order_assignment",
+    "description": "Test delivery management API endpoints for assigning orders to couriers, updating delivery status, and retrieving courier performance data. Delivery management is primarily desktop app. Test order status workflow: Nieuw -> In behandeling -> Klaar -> Onderweg -> Afgeleverd via PUT /api/v1/orders/{id}/status. Requires JWT authentication."
+  },
+  {
+    "id": "TC008",
+    "title": "reporting_analytics_api_data_accuracy",
+    "description": "Validate the reporting and analytics API endpoints for generating daily, monthly, and Z-reports with accurate product statistics, hourly breakdowns, and revenue tracking. Endpoints: GET /api/v1/reports/daily?report_date=YYYY-MM-DD, GET /api/v1/reports/monthly?year=YYYY&month=MM, GET /api/v1/reports/z-report?report_date=YYYY-MM-DD. Requires admin JWT authentication."
+  },
+  {
+    "id": "TC009",
+    "title": "receipt_generation_api_format_and_print",
+    "description": "Ensure receipt generation API produces correctly formatted ESC/POS receipts with QR codes and integrates with thermal printers or print queue systems. First create order via POST /api/v1/orders, then print via POST /api/v1/printer/print with {order_id}. Requires JWT authentication. Order will have bonnummer field."
+  },
+  {
+    "id": "TC010",
+    "title": "real_time_updates_api_websocket_stability",
+    "description": "Test the WebSocket API for stable real-time order status updates, status change notifications, and synchronization with the admin dashboard. WebSocket endpoint: ws://localhost:8000/ws. Use websockets library (plural, not websocket). Send subscribe_admin message after connection. Test order status updates trigger WebSocket messages."
+  }
+]
