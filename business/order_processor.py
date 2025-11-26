@@ -138,12 +138,35 @@ class OrderProcessor:
                         logger.warning(f"Kon straatnaam niet toevoegen aan JSON: {e}")
             
             # Ensure customer exists
-            # For pickup orders, address fields can be empty
+            # Voor bezorging: altijd laatste ingevulde adres opslaan
+            # Voor afhaal: bestaand adres NIET leegmaken (adres van klant blijft bewaard)
+            straat: str
+            huisnummer: str
+            plaats: str
+
+            if is_afhaal:
+                # Pickup: probeer bestaande klant op te halen zodat we het adres behouden
+                existing_customer = self.customer_service.find_customer(klant_data["telefoon"])
+                if existing_customer:
+                    straat = existing_customer.get("straat", "") or ""
+                    huisnummer = existing_customer.get("huisnummer", "") or ""
+                    plaats = existing_customer.get("plaats", "") or ""
+                else:
+                    # Nieuwe klant zonder adres (mag bij afhaal)
+                    straat = ""
+                    huisnummer = ""
+                    plaats = ""
+            else:
+                # Bezorging: gebruik het adres uit het formulier (laatste adres wint altijd)
+                straat = klant_data.get("adres", "") or ""
+                huisnummer = klant_data.get("nr", "") or ""
+                plaats = klant_data.get("postcode_gemeente", "") or ""
+
             self.customer_service.create_or_update_customer(
                 telefoon=klant_data["telefoon"],
-                straat=klant_data.get("adres", "") if not is_afhaal else "",
-                huisnummer=klant_data.get("nr", "") if not is_afhaal else "",
-                plaats=klant_data.get("postcode_gemeente", "") if not is_afhaal else "",
+                straat=straat,
+                huisnummer=huisnummer,
+                plaats=plaats,
                 naam=klant_data.get("naam", "")
             )
             
