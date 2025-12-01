@@ -88,8 +88,12 @@ def generate_bon_text(
         ""
     ]
     
-    # Only show levertijd for delivery orders
-    if not is_afhaal:
+    # Show levertijd/afhaaltijd for both delivery and pickup orders
+    if is_afhaal:
+        # For pickup orders, show as "Afhaaltijd" or "Gekozen tijd"
+        info_lines.append(format_line("Afhaaltijd", levertijd))
+    else:
+        # For delivery orders, show as "Levertijd"
         info_lines.append(format_line("Levertijd", levertijd))
     
     info_lines.append("")

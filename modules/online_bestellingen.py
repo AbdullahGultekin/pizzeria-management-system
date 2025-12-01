@@ -1847,6 +1847,11 @@ class OnlineBestellingenManager:
             from utils.print_utils import _save_and_print_from_preview
             
             # Convert order to bon format
+            # Check if order is pickup (afhaal) - can be boolean or integer (0/1)
+            is_afhaal = order.get('afhaal', False)
+            if isinstance(is_afhaal, int):
+                is_afhaal = bool(is_afhaal)
+            
             klant_data = {
                 "naam": order.get('klant_naam', 'Onbekend'),
                 "telefoon": order.get('klant_telefoon', ''),
@@ -1855,7 +1860,7 @@ class OnlineBestellingenManager:
                 "postcode": "",
                 "gemeente": "",
                 "levertijd": order.get('levertijd', ''),
-                "afhaal": False,
+                "afhaal": is_afhaal,
                 "korting_percentage": 0.0
             }
             

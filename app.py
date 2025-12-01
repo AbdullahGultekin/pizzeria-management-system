@@ -633,19 +633,23 @@ info@pitapizzanapoli.be
                 # ============ 2. PARSE BON LINES ============
                 bon_lines = full_bon_text_for_print.split('\n')
                 bonnummer_idx = bezorgtijd_idx = address_idx = dhr_mvr_idx = details_idx = 0
+                is_afhaal = False
                 
                 for i, line in enumerate(bon_lines):
                     if 'Bonnummer' in line: bonnummer_idx = i
-                    if 'Bezorgtijd' in line: bezorgtijd_idx = i
+                    if 'Bezorgtijd' in line or 'Afhaaltijd' in line or 'Levertijd' in line: bezorgtijd_idx = i
                     if 'Leveringsadres:' in line: address_idx = i
+                    if 'Afhaal:' in line: 
+                        address_idx = i
+                        is_afhaal = True
                     if ('Dhr.' in line or 'Mvr.' in line): dhr_mvr_idx = i
                     if 'Details bestelling' in line: details_idx = i; break
                 
-                # ============ 3. BESTELINFO (tot bezorgtijd) ============
+                # ============ 3. BESTELINFO (tot bezorgtijd/afhaaltijd) ============
                 win32print.WritePrinter(hprinter, ESC + b'a' + b'\x00')  # Links uitlijnen
                 win32print.WritePrinter(hprinter, '\n'.join(bon_lines[bonnummer_idx:bezorgtijd_idx]).encode('cp437', errors='replace'))
                 
-                # ============ 4. BEZORGTIJD (vet) ============
+                # ============ 4. BEZORGTIJD/AFHAALTIJD (vet) ============
                 win32print.WritePrinter(hprinter, ESC + b'E' + b'\x01')  # Bold aan
                 win32print.WritePrinter(hprinter, bon_lines[bezorgtijd_idx].encode('cp437', errors='replace'))
                 win32print.WritePrinter(hprinter, b'\n')
@@ -664,8 +668,12 @@ info@pitapizzanapoli.be
                         if possible_name and ("Details bestelling" not in possible_name):
                             klantnaam = possible_name
                 
-                # ============ 6. LEVERINGSADRES (groot en vet) ============
-                win32print.WritePrinter(hprinter, 'Leveringsadres:\n'.encode('cp858'))
+                # ============ 6. ADRES SECTIE (groot en vet) ============
+                # Bepaal of het afhaal of levering is
+                if is_afhaal:
+                    win32print.WritePrinter(hprinter, 'Afhaal:\n'.encode('cp858'))
+                else:
+                    win32print.WritePrinter(hprinter, 'Leveringsadres:\n'.encode('cp858'))
                 win32print.WritePrinter(hprinter, ESC + b'E' + b'\x01')  # Bold aan
                 win32print.WritePrinter(hprinter, GS + b'!' + b'\x01')  # Dubbele hoogte + breedte
                 
