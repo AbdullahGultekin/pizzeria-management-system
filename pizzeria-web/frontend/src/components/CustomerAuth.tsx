@@ -15,7 +15,9 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  Link,
 } from '@mui/material'
+import { useNavigate } from 'react-router-dom'
 import { customerAPI, addressAPI } from '../services/api'
 import { getErrorMessage } from '../utils/errorHandler'
 import { brandColors } from '../theme/colors'
@@ -48,6 +50,7 @@ function TabPanel(props: TabPanelProps) {
 }
 
 const CustomerAuth = ({ open, onClose, onSuccess }: CustomerAuthProps) => {
+  const navigate = useNavigate()
   const [tab, setTab] = useState(0)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -206,8 +209,26 @@ const CustomerAuth = ({ open, onClose, onSuccess }: CustomerAuthProps) => {
         return
       }
 
-      if (registerData.password.length < 6) {
-        setError('Wachtwoord moet minimaal 6 tekens lang zijn')
+      // Validate password strength
+      const passwordErrors: string[] = []
+      if (registerData.password.length < 8) {
+        passwordErrors.push('Minimaal 8 tekens')
+      }
+      if (!/[A-Z]/.test(registerData.password)) {
+        passwordErrors.push('Minimaal één hoofdletter')
+      }
+      if (!/[a-z]/.test(registerData.password)) {
+        passwordErrors.push('Minimaal één kleine letter')
+      }
+      if (!/\d/.test(registerData.password)) {
+        passwordErrors.push('Minimaal één cijfer')
+      }
+      if (!/[!@#$%^&*()_+\-=\[\]{}|;:,.<>?]/.test(registerData.password)) {
+        passwordErrors.push('Minimaal één speciaal teken (!@#$%^&*()_+-=[]{}|;:,.<>?)')
+      }
+      
+      if (passwordErrors.length > 0) {
+        setError(`Wachtwoord vereisten: ${passwordErrors.join(', ')}`)
         setLoading(false)
         return
       }
@@ -389,6 +410,25 @@ const CustomerAuth = ({ open, onClose, onSuccess }: CustomerAuthProps) => {
             required
             autoComplete="current-password"
           />
+          <Box sx={{ textAlign: 'right', mt: 1 }}>
+            <Link
+              component="button"
+              type="button"
+              variant="body2"
+              onClick={() => {
+                onClose()
+                navigate('/forgot-password')
+              }}
+              sx={{
+                color: brandColors.primary,
+                textDecoration: 'none',
+                '&:hover': { textDecoration: 'underline' },
+                cursor: 'pointer',
+              }}
+            >
+              Wachtwoord vergeten?
+            </Link>
+          </Box>
           {resendEmail && (
             <Box sx={{ mt: 2, p: 2, bgcolor: '#fff3cd', borderRadius: '8px', border: '1px solid #ffc107' }}>
               <Typography variant="body2" sx={{ mb: 1, color: '#856404' }}>
@@ -433,7 +473,7 @@ const CustomerAuth = ({ open, onClose, onSuccess }: CustomerAuthProps) => {
             margin="normal"
             required
             autoComplete="new-password"
-            helperText="Minimaal 6 tekens"
+            helperText="Minimaal 8 tekens, hoofdletters, cijfers en speciale tekens"
           />
           <TextField
             fullWidth

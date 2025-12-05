@@ -1,4 +1,5 @@
-import { Box, Container, Typography, Button, Chip } from '@mui/material'
+import { useState, useEffect } from 'react'
+import { Box, Container, Typography, Button, Chip, Menu, MenuItem, IconButton } from '@mui/material'
 import { useNavigate, useLocation } from 'react-router-dom'
 import RestaurantIcon from '@mui/icons-material/Restaurant'
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart'
@@ -7,11 +8,56 @@ import LocalShippingIcon from '@mui/icons-material/LocalShipping'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import CancelIcon from '@mui/icons-material/Cancel'
+import PersonIcon from '@mui/icons-material/Person'
+import LoginIcon from '@mui/icons-material/Login'
+import LanguageIcon from '@mui/icons-material/Language'
+import LogoutIcon from '@mui/icons-material/Logout'
 import { brandColors } from '../theme/colors'
+import { useLanguage } from '../contexts/LanguageContext'
+import CustomerAuth from './CustomerAuth'
+import { Language } from '../i18n/translations'
 
 const PublicHeader = () => {
   const navigate = useNavigate()
   const location = useLocation()
+  const { language, setLanguage, t } = useLanguage()
+  const [authDialogOpen, setAuthDialogOpen] = useState(false)
+  const [languageMenuAnchor, setLanguageMenuAnchor] = useState<null | HTMLElement>(null)
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [customerName, setCustomerName] = useState('')
+
+  // Check if customer is logged in
+  useEffect(() => {
+    const checkAuth = () => {
+      const token = localStorage.getItem('customer_token')
+      const customerData = localStorage.getItem('customer_data')
+      if (token && customerData) {
+        try {
+          const customer = JSON.parse(customerData)
+          setIsLoggedIn(true)
+          setCustomerName(customer.naam || customer.email || '')
+        } catch (e) {
+          setIsLoggedIn(false)
+          setCustomerName('')
+        }
+      } else {
+        setIsLoggedIn(false)
+        setCustomerName('')
+      }
+    }
+    checkAuth()
+    // Check periodically
+    const interval = setInterval(checkAuth, 1000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const handleLogout = () => {
+    localStorage.removeItem('customer_token')
+    localStorage.removeItem('customer_data')
+    setIsLoggedIn(false)
+    setCustomerName('')
+    navigate('/')
+  }
 
   // Opening hours logic
   const getOpeningHours = () => {
@@ -26,26 +72,26 @@ const PublicHeader = () => {
     const closingTime = 20 * 60 + 30 // 20:30
 
     if (day === 1) { // Monday
-      return { isOpen: false, status: 'Gesloten', message: 'Vandaag gesloten' }
+      return { isOpen: false, status: t.closed, message: language === 'nl' ? 'Vandaag gesloten' : language === 'fr' ? 'Fermé aujourd\'hui' : 'Closed today' }
     }
 
     if (currentTime >= openingTime && currentTime <= closingTime) {
       return { 
         isOpen: true, 
-        status: 'Open', 
-        message: `Open tot 20:30` 
+        status: t.open, 
+        message: language === 'nl' ? 'Open tot 20:30' : language === 'fr' ? 'Ouvert jusqu\'à 20:30' : 'Open until 20:30'
       }
     } else if (currentTime < openingTime) {
       return { 
         isOpen: false, 
-        status: 'Gesloten', 
-        message: `Opent om 17:00` 
+        status: t.closed, 
+        message: language === 'nl' ? 'Opent om 17:00' : language === 'fr' ? 'Ouvre à 17:00' : 'Opens at 17:00'
       }
     } else {
       return { 
         isOpen: false, 
-        status: 'Gesloten', 
-        message: 'Vandaag gesloten' 
+        status: t.closed, 
+        message: language === 'nl' ? 'Vandaag gesloten' : language === 'fr' ? 'Fermé aujourd\'hui' : 'Closed today'
       }
     }
   }
@@ -53,23 +99,23 @@ const PublicHeader = () => {
   const openingStatus = getOpeningHours()
 
   const openingstijden: { [key: number]: string } = {
-    0: '17:00 - 20:30', // Zondag
-    1: 'Gesloten',      // Maandag
-    2: '17:00 - 20:30', // Dinsdag
-    3: '17:00 - 20:30', // Woensdag
-    4: '17:00 - 20:30', // Donderdag
-    5: '17:00 - 20:30', // Vrijdag
-    6: '17:00 - 20:30', // Zaterdag
+    0: '17:00 - 20:30',
+    1: t.closed,
+    2: '17:00 - 20:30',
+    3: '17:00 - 20:30',
+    4: '17:00 - 20:30',
+    5: '17:00 - 20:30',
+    6: '17:00 - 20:30',
   }
 
   const getTodayHours = () => {
     const today = new Date().getDay()
-    return openingstijden[today] || 'Gesloten'
+    return openingstijden[today] || t.closed
   }
 
   const getTomorrowHours = () => {
     const tomorrow = (new Date().getDay() + 1) % 7
-    return openingstijden[tomorrow] || 'Gesloten'
+    return openingstijden[tomorrow] || t.closed
   }
 
   return (
@@ -149,20 +195,119 @@ const PublicHeader = () => {
               </Box>
             </Box>
 
-            {/* Opening Hours & Delivery Times */}
-            <Box sx={{ display: { xs: 'none', lg: 'block' }, textAlign: 'right', flexShrink: 0 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5, justifyContent: 'flex-end' }}>
-                <AccessTimeIcon sx={{ color: brandColors.primary, fontSize: '1rem' }} />
-                <Typography variant="body2" sx={{ fontWeight: 700, color: brandColors.primary, fontSize: '0.95rem' }}>
-                  Openingstijden
+            {/* Opening Hours & Actions */}
+            <Box sx={{ display: { xs: 'none', lg: 'flex' }, flexDirection: 'column', alignItems: 'flex-end', gap: 2, flexShrink: 0 }}>
+              {/* Opening Hours */}
+              <Box sx={{ textAlign: 'right' }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5, justifyContent: 'flex-end' }}>
+                  <AccessTimeIcon sx={{ color: brandColors.primary, fontSize: '1rem' }} />
+                  <Typography variant="body2" sx={{ fontWeight: 700, color: brandColors.primary, fontSize: '0.95rem' }}>
+                    {t.openingHours}
+                  </Typography>
+                </Box>
+                <Typography variant="body2" sx={{ color: '#666', fontSize: '0.9rem', fontWeight: 500, mb: 0.25 }}>
+                  {t.today}: {getTodayHours()}
+                </Typography>
+                <Typography variant="body2" sx={{ color: '#666', fontSize: '0.9rem', fontWeight: 500 }}>
+                  {t.tomorrow}: {getTomorrowHours()}
                 </Typography>
               </Box>
-              <Typography variant="body2" sx={{ color: '#666', fontSize: '0.9rem', fontWeight: 500, mb: 0.25 }}>
-                Vandaag: {getTodayHours()}
-              </Typography>
-              <Typography variant="body2" sx={{ color: '#666', fontSize: '0.9rem', fontWeight: 500 }}>
-                Morgen: {getTomorrowHours()}
-              </Typography>
+              
+              {/* Language & Auth Buttons */}
+              <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                {/* Language Selector */}
+                <IconButton
+                  onClick={(e) => setLanguageMenuAnchor(e.currentTarget)}
+                  sx={{
+                    color: brandColors.primary,
+                    border: `1px solid ${brandColors.primary}`,
+                    '&:hover': { bgcolor: `${brandColors.primary}10` },
+                  }}
+                  size="small"
+                  title={t.language}
+                >
+                  <LanguageIcon />
+                </IconButton>
+                <Menu
+                  anchorEl={languageMenuAnchor}
+                  open={Boolean(languageMenuAnchor)}
+                  onClose={() => setLanguageMenuAnchor(null)}
+                >
+                  <MenuItem
+                    selected={language === 'nl'}
+                    onClick={() => {
+                      setLanguage('nl')
+                      setLanguageMenuAnchor(null)
+                    }}
+                  >
+                    {t.dutch}
+                  </MenuItem>
+                  <MenuItem
+                    selected={language === 'fr'}
+                    onClick={() => {
+                      setLanguage('fr')
+                      setLanguageMenuAnchor(null)
+                    }}
+                  >
+                    {t.french}
+                  </MenuItem>
+                  <MenuItem
+                    selected={language === 'en'}
+                    onClick={() => {
+                      setLanguage('en')
+                      setLanguageMenuAnchor(null)
+                    }}
+                  >
+                    {t.english}
+                  </MenuItem>
+                </Menu>
+                
+                {/* Login/Register or Account */}
+                {isLoggedIn ? (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Button
+                      startIcon={<PersonIcon />}
+                      onClick={() => navigate('/checkout')}
+                      sx={{
+                        textTransform: 'none',
+                        color: brandColors.primary,
+                        borderColor: brandColors.primary,
+                        '&:hover': { bgcolor: `${brandColors.primary}10` },
+                      }}
+                      variant="outlined"
+                      size="small"
+                    >
+                      {customerName || t.myAccount}
+                    </Button>
+                    <IconButton
+                      onClick={handleLogout}
+                      sx={{
+                        color: brandColors.primary,
+                        '&:hover': { bgcolor: `${brandColors.primary}10` },
+                      }}
+                      size="small"
+                      title={t.logout}
+                    >
+                      <LogoutIcon />
+                    </IconButton>
+                  </Box>
+                ) : (
+                  <Button
+                    startIcon={<LoginIcon />}
+                    onClick={() => setAuthDialogOpen(true)}
+                    sx={{
+                      textTransform: 'none',
+                      bgcolor: brandColors.primary,
+                      color: '#fff',
+                      '&:hover': { bgcolor: brandColors.primaryDark },
+                    }}
+                    variant="contained"
+                    size="small"
+                  >
+                    {t.login}
+                  </Button>
+                )}
+              </Box>
             </Box>
           </Box>
         </Container>
@@ -195,7 +340,7 @@ const PublicHeader = () => {
                 transition: 'all 0.2s ease',
               }}
             >
-              Menu
+              {t.menu}
             </Button>
             <Button
               startIcon={<ShoppingCartIcon />}
@@ -216,7 +361,7 @@ const PublicHeader = () => {
                 transition: 'all 0.2s ease',
               }}
             >
-              Winkelwagen
+              {t.cart}
             </Button>
             <Button
               startIcon={<LocalShippingIcon />}
@@ -237,7 +382,7 @@ const PublicHeader = () => {
                 transition: 'all 0.2s ease',
               }}
             >
-              Bestelling Volgen
+              {t.trackOrder}
             </Button>
             <Button
               startIcon={<ContactMailIcon />}
@@ -258,11 +403,60 @@ const PublicHeader = () => {
                 transition: 'all 0.2s ease',
               }}
             >
-              Contactpagina
+              {t.contact}
             </Button>
+            
+            {/* Mobile Login Button */}
+            <Box sx={{ display: { xs: 'flex', lg: 'none' }, ml: 'auto', gap: 1 }}>
+              <IconButton
+                onClick={(e) => setLanguageMenuAnchor(e.currentTarget)}
+                sx={{ color: brandColors.primary }}
+                size="small"
+              >
+                <LanguageIcon />
+              </IconButton>
+              {isLoggedIn ? (
+                <Button
+                  startIcon={<PersonIcon />}
+                  onClick={() => navigate('/checkout')}
+                  sx={{
+                    textTransform: 'none',
+                    color: brandColors.primary,
+                    fontSize: '0.9rem',
+                  }}
+                  size="small"
+                >
+                  {customerName || t.myAccount}
+                </Button>
+              ) : (
+                <Button
+                  startIcon={<LoginIcon />}
+                  onClick={() => setAuthDialogOpen(true)}
+                  sx={{
+                    textTransform: 'none',
+                    color: brandColors.primary,
+                    fontSize: '0.9rem',
+                  }}
+                  size="small"
+                >
+                  {t.login}
+                </Button>
+              )}
+            </Box>
           </Box>
         </Container>
       </Box>
+      
+      {/* Customer Auth Dialog */}
+      <CustomerAuth
+        open={authDialogOpen}
+        onClose={() => setAuthDialogOpen(false)}
+        onSuccess={(customer, token) => {
+          setIsLoggedIn(true)
+          setCustomerName(customer.naam || customer.email || '')
+          setAuthDialogOpen(false)
+        }}
+      />
     </>
   )
 }

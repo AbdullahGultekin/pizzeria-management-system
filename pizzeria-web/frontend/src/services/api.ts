@@ -74,7 +74,12 @@ export const customerAPI = {
   },
   getByPhone: async (phone: string) => {
     try {
-      const response = await api.get(`/customers/phone/${phone}`)
+      // Use public endpoint for checkout (no authentication required)
+      const response = await axios.get(`${API_BASE_URL}/customers/public/phone/${phone}`, {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
       return response.data
     } catch (err: any) {
       // If 404, return null instead of throwing
@@ -85,11 +90,21 @@ export const customerAPI = {
     }
   },
   create: async (data: any) => {
-    const response = await api.post('/customers', data)
+    // Use public endpoint for checkout (no authentication required)
+    const response = await axios.post(`${API_BASE_URL}/customers/public`, data, {
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    })
     return response.data
   },
   update: async (id: number, data: any) => {
-    const response = await api.put(`/customers/${id}`, data)
+    // Use public endpoint for checkout (no authentication required)
+    const response = await axios.put(`${API_BASE_URL}/customers/public/${id}`, data, {
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    })
     return response.data
   },
   // Public customer endpoints
@@ -135,8 +150,10 @@ export const customerAPI = {
     return response.data
   },
   verifyEmail: async (token: string) => {
+    // URL encode the token to handle special characters
+    const encodedToken = encodeURIComponent(token)
     const response = await axios.get(
-      `${API_BASE_URL}/customers/public/verify-email?token=${token}`,
+      `${API_BASE_URL}/customers/public/verify-email?token=${encodedToken}`,
       {
         headers: {
           'Content-Type': 'application/json',
@@ -149,6 +166,30 @@ export const customerAPI = {
     const response = await axios.post(
       `${API_BASE_URL}/customers/public/resend-verification`,
       { email },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      }
+    )
+    return response.data
+  },
+  forgotPassword: async (email: string) => {
+    const response = await axios.post(
+      `${API_BASE_URL}/customers/public/forgot-password`,
+      { email },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      }
+    )
+    return response.data
+  },
+  resetPassword: async (token: string, newPassword: string) => {
+    const response = await axios.post(
+      `${API_BASE_URL}/customers/public/reset-password`,
+      { token, new_password: newPassword },
       {
         headers: {
           'Content-Type': 'application/json',
@@ -207,12 +248,25 @@ export const orderAPI = {
   },
   createPublic: async (data: any) => {
     // Public endpoint without authentication
-    const response = await axios.post(`${API_BASE_URL}/orders/public`, data, {
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    })
-    return response.data
+    console.log('Creating public order:', { url: `${API_BASE_URL}/orders/public`, method: 'POST', data })
+    try {
+      const response = await axios.post(`${API_BASE_URL}/orders/public`, data, {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+      console.log('Order created successfully:', response.data)
+      return response.data
+    } catch (error: any) {
+      console.error('Error creating public order:', {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        url: error.config?.url,
+        method: error.config?.method,
+      })
+      throw error
+    }
   },
   update: async (id: number, data: any) => {
     const response = await api.put(`/orders/${id}`, data)
@@ -402,6 +456,28 @@ export const settingsAPI = {
     } catch (error: any) {
       console.error('Error fetching delivery zones:', error)
       return {}
+    }
+  },
+  getOpeningHours: async () => {
+    try {
+      const response = await axios.get(`${API_BASE_URL}/settings/opening-hours`, {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+      return response.data
+    } catch (error: any) {
+      console.error('Error fetching opening hours:', error)
+      // Return default on error
+      return {
+        monday: { open: false, open_time: '17:00', close_time: '20:30' },
+        tuesday: { open: true, open_time: '17:00', close_time: '20:30' },
+        wednesday: { open: true, open_time: '17:00', close_time: '20:30' },
+        thursday: { open: true, open_time: '17:00', close_time: '20:30' },
+        friday: { open: true, open_time: '17:00', close_time: '20:30' },
+        saturday: { open: true, open_time: '17:00', close_time: '20:30' },
+        sunday: { open: true, open_time: '17:00', close_time: '20:30' },
+      }
     }
   },
 }

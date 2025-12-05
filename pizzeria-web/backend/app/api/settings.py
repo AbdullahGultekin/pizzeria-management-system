@@ -141,3 +141,81 @@ async def get_delivery_zones() -> Dict[str, float]:
         # Return default on error
         return default_zones
 
+
+@router.get("/settings/opening-hours")
+async def get_opening_hours() -> Dict[str, Any]:
+    """
+    Get opening hours configuration (public endpoint).
+    Returns opening hours for each day of the week.
+    """
+    default_hours = {
+        "monday": {
+            "open": False,
+            "open_time": "17:00",
+            "close_time": "20:30"
+        },
+        "tuesday": {
+            "open": True,
+            "open_time": "17:00",
+            "close_time": "20:30"
+        },
+        "wednesday": {
+            "open": True,
+            "open_time": "17:00",
+            "close_time": "20:30"
+        },
+        "thursday": {
+            "open": True,
+            "open_time": "17:00",
+            "close_time": "20:30"
+        },
+        "friday": {
+            "open": True,
+            "open_time": "17:00",
+            "close_time": "20:30"
+        },
+        "saturday": {
+            "open": True,
+            "open_time": "17:00",
+            "close_time": "20:30"
+        },
+        "sunday": {
+            "open": True,
+            "open_time": "17:00",
+            "close_time": "20:30"
+        }
+    }
+    
+    try:
+        settings = load_settings()
+        
+        # Get opening hours from settings, or use defaults
+        opening_hours = settings.get("opening_hours", {})
+        
+        # If no opening hours in settings, return defaults
+        if not opening_hours or not isinstance(opening_hours, dict):
+            logger.warning("No opening hours found in settings, using defaults")
+            return default_hours
+        
+        # Validate and return opening hours
+        result = {}
+        for day in ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]:
+            if day in opening_hours:
+                day_config = opening_hours[day]
+                if isinstance(day_config, dict):
+                    result[day] = {
+                        "open": day_config.get("open", False),
+                        "open_time": day_config.get("open_time", "17:00"),
+                        "close_time": day_config.get("close_time", "20:30")
+                    }
+                else:
+                    result[day] = default_hours[day]
+            else:
+                result[day] = default_hours[day]
+        
+        return result
+    except Exception as e:
+        logger.error(f"Error getting opening hours: {str(e)}", exc_info=True)
+        # Return default on error
+        return default_hours
+

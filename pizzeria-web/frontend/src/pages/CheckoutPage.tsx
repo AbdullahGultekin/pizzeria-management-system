@@ -32,6 +32,7 @@ import { brandColors } from '../theme/colors'
 import { getErrorMessage, formatValidationErrors } from '../utils/errorHandler'
 import CustomerAuth from '../components/CustomerAuth'
 import { CardElement, useStripe, useElements } from '@stripe/react-stripe-js'
+import { useTranslations } from '../hooks/useTranslations'
 
 interface CartItem {
   id: string
@@ -57,6 +58,7 @@ interface CustomerData {
 
 const CheckoutPage = () => {
   const navigate = useNavigate()
+  const { t, translateProduct, translateCategory } = useTranslations()
   const stripe = useStripe()
   const elements = useElements()
   const [cartItems, setCartItems] = useState<CartItem[]>([])
@@ -76,13 +78,12 @@ const CheckoutPage = () => {
   const [errors, setErrors] = useState<Partial<CustomerData>>({})
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
-  const [orderSuccess, setOrderSuccess] = useState(false)
-  const [orderNumber, setOrderNumber] = useState('')
   const [minAmountWarning, setMinAmountWarning] = useState('')
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [authDialogOpen, setAuthDialogOpen] = useState(false)
   const [paymentError, setPaymentError] = useState<string | null>(null)
   const [paymentProcessing, setPaymentProcessing] = useState(false)
+  const [hasAutofillData, setHasAutofillData] = useState(false)
 
   useEffect(() => {
     // Load cart from localStorage
@@ -172,6 +173,31 @@ const CheckoutPage = () => {
         }
       } else {
         setIsLoggedIn(false)
+        
+        // Load saved autofill data for non-logged-in users
+        try {
+          const savedAutofill = localStorage.getItem('checkout_autofill')
+          if (savedAutofill) {
+            const autofillData = JSON.parse(savedAutofill)
+            setHasAutofillData(true)
+            setCustomerData(prev => ({
+              ...prev,
+              naam: autofillData.naam || prev.naam,
+              telefoon: autofillData.telefoon || prev.telefoon,
+              email: autofillData.email || prev.email,
+              straat: autofillData.straat || prev.straat,
+              huisnummer: autofillData.huisnummer || prev.huisnummer,
+              postcode_gemeente: autofillData.postcode_gemeente || prev.postcode_gemeente,
+            }))
+          } else {
+            setHasAutofillData(false)
+          }
+        } catch (e) {
+          console.error('Error loading autofill data:', e)
+          // Clear invalid data
+          localStorage.removeItem('checkout_autofill')
+          setHasAutofillData(false)
+        }
       }
     }
     
@@ -186,7 +212,8 @@ const CheckoutPage = () => {
   }
 
   const formatCategory = (cat: string) => {
-    return cat.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+    const translated = translateCategory(cat)
+    return translated.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
   }
 
   const formatExtras = (extras: any) => {
@@ -194,36 +221,36 @@ const CheckoutPage = () => {
     const details: string[] = []
     
     if (extras.vlees) {
-      details.push(`Vlees: ${extras.vlees}`)
+      details.push(`${t.meat}: ${extras.vlees}`)
     }
     if (extras.bijgerecht) {
       if (Array.isArray(extras.bijgerecht)) {
-        details.push(`Bijgerecht: ${extras.bijgerecht.join(', ')}`)
+        details.push(`${t.sideDish}: ${extras.bijgerecht.join(', ')}`)
       } else {
-        details.push(`Bijgerecht: ${extras.bijgerecht}`)
+        details.push(`${t.sideDish}: ${extras.bijgerecht}`)
       }
     }
     if (extras.sauzen) {
       if (Array.isArray(extras.sauzen)) {
-        details.push(`Sauzen: ${extras.sauzen.join(', ')}`)
+        details.push(`${t.sauces}: ${extras.sauzen.join(', ')}`)
       } else {
-        details.push(`Sauzen: ${extras.sauzen}`)
+        details.push(`${t.sauces}: ${extras.sauzen}`)
       }
     }
     if (extras.saus1) {
-      details.push(`Saus 1: ${extras.saus1}`)
+      details.push(`${t.sauce1}: ${extras.saus1}`)
     }
     if (extras.saus2) {
-      details.push(`Saus 2: ${extras.saus2}`)
+      details.push(`${t.sauce2}: ${extras.saus2}`)
     }
     if (extras.garnering && Array.isArray(extras.garnering) && extras.garnering.length > 0) {
-      details.push(`Extra: ${extras.garnering.join(', ')}`)
+      details.push(`${t.extra}: ${extras.garnering.join(', ')}`)
     }
     if (extras.half_half && Array.isArray(extras.half_half) && extras.half_half.length === 2) {
-      details.push(`Half-half: ${extras.half_half[0]} / ${extras.half_half[1]}`)
+      details.push(`${t.halfHalf}: ${extras.half_half[0]} / ${extras.half_half[1]}`)
     }
     if (extras.opmerking) {
-      details.push(`Opmerking: ${extras.opmerking}`)
+      details.push(`${t.remark}: ${extras.opmerking}`)
     }
     
     return details
@@ -309,40 +336,39 @@ const CheckoutPage = () => {
         const existingCustomer = await customerAPI.getByPhone(customerData.telefoon)
         // Check if customer exists and has valid id
         if (existingCustomer && typeof existingCustomer === 'object' && 'id' in existingCustomer && existingCustomer.id) {
-          // Split postcode_gemeente into postcode and plaats
-          const { postcode, plaats } = splitPostcodeGemeente(customerData.postcode_gemeente)
-          // Update customer if exists
+          // Update customer if exists - plaats contains "postcode gemeente" (e.g., "9120 Vrasene")
           customer = await customerAPI.update(existingCustomer.id, {
             naam: customerData.naam,
             telefoon: customerData.telefoon,
+            email: customerData.email, // FIX: Include email address
             straat: customerData.straat,
             huisnummer: customerData.huisnummer,
-            postcode: postcode,
-            plaats: plaats,
+            plaats: customerData.postcode_gemeente, // plaats contains "postcode gemeente"
           })
         } else {
           // Customer doesn't exist or invalid response, create new one
-          const { postcode, plaats } = splitPostcodeGemeente(customerData.postcode_gemeente)
+          // plaats contains "postcode gemeente" (e.g., "9120 Vrasene")
           customer = await customerAPI.create({
             naam: customerData.naam,
             telefoon: customerData.telefoon,
+            email: customerData.email, // FIX: Include email address
             straat: customerData.straat,
             huisnummer: customerData.huisnummer,
-            postcode: postcode,
-            plaats: plaats,
+            plaats: customerData.postcode_gemeente, // plaats contains "postcode gemeente"
           })
         }
       } catch (err: any) {
         // If 404 or 400, customer doesn't exist - create new one
         if (err.response?.status === 404 || err.response?.status === 400) {
-          const { postcode, plaats } = splitPostcodeGemeente(customerData.postcode_gemeente)
+          // Customer doesn't exist - create new one
+          // plaats contains "postcode gemeente" (e.g., "9120 Vrasene")
           customer = await customerAPI.create({
             naam: customerData.naam,
             telefoon: customerData.telefoon,
+            email: customerData.email, // FIX: Include email address
             straat: customerData.straat,
             huisnummer: customerData.huisnummer,
-            postcode: postcode,
-            plaats: plaats,
+            plaats: customerData.postcode_gemeente, // plaats contains "postcode gemeente"
           })
         } else {
           // Re-throw other errors
@@ -351,7 +377,39 @@ const CheckoutPage = () => {
       }
 
       // Create order
-      const orderItems = cartItems.map((item) => ({
+      // Validate and filter cart items
+      if (!cartItems || cartItems.length === 0) {
+        throw new Error('Geen items in winkelwagen. Voeg eerst items toe aan je winkelwagen.')
+      }
+      
+      // Log cart items for debugging
+      console.log('Cart items before creating order:', cartItems)
+      console.log('Cart items count:', cartItems.length)
+      
+      // Filter out invalid items (items without required fields)
+      const validCartItems = cartItems.filter(item => {
+        const isValid = item && 
+                       item.naam && 
+                       item.prijs && 
+                       item.prijs > 0 && 
+                       item.aantal && 
+                       item.aantal > 0 &&
+                       item.product_id
+        if (!isValid) {
+          console.warn('Invalid cart item filtered out:', item)
+        }
+        return isValid
+      })
+      
+      if (validCartItems.length === 0) {
+        throw new Error('Geen geldige items in winkelwagen. Voeg eerst items toe aan je winkelwagen.')
+      }
+      
+      if (validCartItems.length !== cartItems.length) {
+        console.warn(`Filtered out ${cartItems.length - validCartItems.length} invalid items from cart`)
+      }
+      
+      const orderItems = validCartItems.map((item) => ({
         product_id: item.product_id,
         product_naam: item.naam,
         aantal: item.aantal,
@@ -360,7 +418,9 @@ const CheckoutPage = () => {
         extras: item.extras || null,
       }))
 
-      const totaal = getTotal()
+      console.log('Order items being sent:', orderItems)
+      const totaal = validCartItems.reduce((sum, item) => sum + item.prijs * item.aantal, 0)
+      console.log('Calculated total:', totaal)
 
       const order = await orderAPI.createPublic({
         klant_id: customer.id,
@@ -373,7 +433,7 @@ const CheckoutPage = () => {
       // Als betaalmethode Stripe/online is, eerst betaling uitvoeren
       if (customerData.betaalmethode === 'online') {
         if (!stripe || !elements) {
-          throw new Error('Betaalsysteem (Stripe) is niet beschikbaar. Probeer later opnieuw.')
+          throw new Error(t.language === 'nl' ? 'Betaalsysteem (Stripe) is niet beschikbaar. Probeer later opnieuw.' : t.language === 'fr' ? 'Le système de paiement (Stripe) n\'est pas disponible. Veuillez réessayer plus tard.' : 'Payment system (Stripe) is not available. Please try again later.')
         }
 
         setPaymentProcessing(true)
@@ -406,22 +466,52 @@ const CheckoutPage = () => {
         }
       }
 
-      setOrderNumber(order.bonnummer || '')
-      setOrderSuccess(true)
+      // Save customer data to localStorage for autofill (only if not logged in)
+      if (!isLoggedIn) {
+        try {
+          const dataToSave = {
+            naam: customerData.naam,
+            telefoon: customerData.telefoon,
+            email: customerData.email,
+            straat: customerData.straat,
+            huisnummer: customerData.huisnummer,
+            postcode_gemeente: customerData.postcode_gemeente,
+            // Don't save betaalmethode and opmerking as these may change
+          }
+          localStorage.setItem('checkout_autofill', JSON.stringify(dataToSave))
+          setHasAutofillData(true)
+        } catch (e) {
+          console.error('Error saving autofill data:', e)
+        }
+      }
 
       // Clear cart
       localStorage.removeItem('cart')
       setCartItems([])
 
-      // Redirect to tracking page after 3 seconden
-      setTimeout(() => {
-        navigate(`/track?bonnummer=${order.bonnummer}`)
-      }, 3000)
+      // Redirect to confirmation page with bonnummer
+      navigate(`/order-confirmation?bonnummer=${order.bonnummer}`)
     } catch (err: any) {
       console.error('Error placing order:', err)
+      console.error('Error details:', {
+        message: err.message,
+        status: err.response?.status,
+        statusText: err.response?.statusText,
+        data: err.response?.data,
+        url: err.config?.url,
+        method: err.config?.method,
+      })
       const errorMsg = getErrorMessage(err)
       const validationErrors = formatValidationErrors(err)
-      setError(errorMsg)
+      
+      // Special handling for Method Not Allowed (405)
+      if (err.response?.status === 405) {
+        setError('De server accepteert deze actie niet. Probeer de pagina te verversen en opnieuw te proberen.')
+        console.error('Method Not Allowed - Check if POST request is being sent correctly')
+      } else {
+        setError(errorMsg)
+      }
+      
       if (validationErrors) {
         setErrors(validationErrors as Partial<CustomerData>)
       }
@@ -502,42 +592,6 @@ const CheckoutPage = () => {
     return { postcode: '', plaats: '' }
   }
 
-  if (orderSuccess) {
-    return (
-      <Box sx={{ minHeight: '100vh', bgcolor: '#fafafa', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <Container maxWidth="sm">
-          <Paper sx={{ p: 4, textAlign: 'center', borderRadius: '17px' }}>
-            <CheckIcon sx={{ fontSize: 60, color: '#4caf50', mb: 2 }} />
-            <Typography variant="h4" sx={{ color: brandColors.primary, fontWeight: 700, mb: 2 }}>
-              Bestelling geplaatst!
-            </Typography>
-            <Typography variant="h6" sx={{ mb: 2 }}>
-              Bonnummer: {orderNumber}
-            </Typography>
-            <Typography variant="body1" sx={{ mb: 3 }}>
-              Uw bestelling is succesvol geplaatst. U wordt doorgestuurd naar de tracking pagina...
-            </Typography>
-            <Button
-              variant="contained"
-              onClick={() => navigate(`/track?bonnummer=${orderNumber}`)}
-              sx={{
-                bgcolor: brandColors.primary,
-                '&:hover': { bgcolor: brandColors.primaryDark },
-                textTransform: 'none',
-                fontWeight: 600,
-                mb: 2,
-              }}
-            >
-              Nu Bestelling Volgen
-            </Button>
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-              Je kunt je bestelling ook later volgen via "Bestelling Volgen" in het menu
-            </Typography>
-          </Paper>
-        </Container>
-      </Box>
-    )
-  }
 
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: '#fafafa' }}>
@@ -653,7 +707,7 @@ const CheckoutPage = () => {
               mb: 3,
             }}
           >
-            Afrekenen
+            {t.checkout}
           </Typography>
 
           {error && (
@@ -675,7 +729,7 @@ const CheckoutPage = () => {
           )}
 
           <Typography variant="h6" sx={{ color: brandColors.primary, fontWeight: 600, mb: 2 }}>
-            Bestellingsoverzicht
+            {t.orderSummary}
           </Typography>
 
           <TableContainer sx={{ mb: 4 }}>
@@ -683,16 +737,16 @@ const CheckoutPage = () => {
               <TableHead>
                 <TableRow sx={{ bgcolor: '#fff7f6' }}>
                   <TableCell sx={{ color: brandColors.primary, fontWeight: 600, fontSize: '1.09em', py: 2 }}>
-                    Product
+                    {t.items}
                   </TableCell>
                   <TableCell sx={{ color: brandColors.primary, fontWeight: 600, fontSize: '1.09em', py: 2 }}>
-                    Details
+                    {t.language === 'nl' ? 'Details' : t.language === 'fr' ? 'Détails' : 'Details'}
                   </TableCell>
                   <TableCell sx={{ color: brandColors.primary, fontWeight: 600, fontSize: '1.09em', py: 2 }}>
-                    Aantal
+                    {t.quantity}
                   </TableCell>
                   <TableCell sx={{ color: brandColors.primary, fontWeight: 600, fontSize: '1.09em', py: 2 }}>
-                    Prijs
+                    {t.price}
                   </TableCell>
                 </TableRow>
               </TableHead>
@@ -703,7 +757,7 @@ const CheckoutPage = () => {
                     <TableRow key={item.id}>
                       <TableCell sx={{ py: 2, verticalAlign: 'top' }}>
                         <Typography variant="body1" sx={{ fontWeight: 700, fontSize: { xs: '0.95rem', sm: '1.05rem' }, mb: 0.5, color: '#333' }}>
-                          {item.naam || 'Onbekend product'}
+                          {translateProduct(item.naam) || (t.language === 'nl' ? 'Onbekend product' : t.language === 'fr' ? 'Produit inconnu' : 'Unknown product')}
                         </Typography>
                         <Typography variant="caption" sx={{ 
                           fontSize: { xs: '0.75rem', sm: '0.85rem' }, 
@@ -712,7 +766,7 @@ const CheckoutPage = () => {
                           color: brandColors.primary,
                           mb: 0.5,
                         }}>
-                          Categorie: {formatCategory(item.categorie)}
+                          {t.language === 'nl' ? 'Categorie' : t.language === 'fr' ? 'Catégorie' : 'Category'}: {translateCategory(item.categorie)}
                         </Typography>
                       </TableCell>
                       <TableCell sx={{ py: 2, verticalAlign: 'top' }}>
@@ -733,7 +787,7 @@ const CheckoutPage = () => {
                           </Box>
                         ) : (
                           <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.9em', fontStyle: 'italic', color: '#999' }}>
-                            Geen extra's
+                            {t.language === 'nl' ? 'Geen extra\'s' : t.language === 'fr' ? 'Aucun extra' : 'No extras'}
                           </Typography>
                         )}
                       </TableCell>
@@ -748,7 +802,7 @@ const CheckoutPage = () => {
               <TableFooter>
                 <TableRow>
                   <TableCell colSpan={3} align="right" sx={{ py: 2, fontWeight: 600 }}>
-                    Totaal:
+                    {t.total}:
                   </TableCell>
                   <TableCell sx={{ py: 2, fontWeight: 700, color: brandColors.primary }}>
                     €{getTotal().toFixed(2)}
@@ -762,20 +816,57 @@ const CheckoutPage = () => {
           {!isLoggedIn && (
             <Box sx={{ mb: 3, p: 2, bgcolor: '#fff5f5', borderRadius: '10px', border: `1px solid ${brandColors.primary}`, mt: 4 }}>
               <Typography variant="body1" sx={{ mb: 2, color: '#666' }}>
-                <strong>Tip:</strong> Log in of registreer je om je gegevens automatisch in te vullen bij volgende bestellingen.
+                <strong>{t.tip}</strong> {t.loginRegisterTip}
+                {hasAutofillData && (
+                  <span style={{ display: 'block', marginTop: '8px', fontSize: '0.9em', color: '#4caf50' }}>
+                    ✓ {t.dataSaved}
+                  </span>
+                )}
               </Typography>
-              <Button
-                variant="contained"
-                onClick={() => setAuthDialogOpen(true)}
-                sx={{
-                  bgcolor: brandColors.primary,
-                  '&:hover': { bgcolor: brandColors.primaryDark },
-                  textTransform: 'none',
-                  fontWeight: 600,
-                }}
-              >
-                Inloggen / Registreren
-              </Button>
+              <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                <Button
+                  variant="contained"
+                  onClick={() => setAuthDialogOpen(true)}
+                  sx={{
+                    bgcolor: brandColors.primary,
+                    '&:hover': { bgcolor: brandColors.primaryDark },
+                    textTransform: 'none',
+                    fontWeight: 600,
+                  }}
+                >
+                  {t.login} / {t.register}
+                </Button>
+                {hasAutofillData && (
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => {
+                      localStorage.removeItem('checkout_autofill')
+                      setHasAutofillData(false)
+                      setCustomerData(prev => ({
+                        ...prev,
+                        naam: '',
+                        telefoon: '',
+                        email: '',
+                        straat: '',
+                        huisnummer: '',
+                        postcode_gemeente: '',
+                      }))
+                    }}
+                    sx={{
+                      textTransform: 'none',
+                      borderColor: '#999',
+                      color: '#666',
+                      '&:hover': {
+                        borderColor: '#666',
+                        bgcolor: '#f5f5f5',
+                      },
+                    }}
+                  >
+                    {t.clearSavedData}
+                  </Button>
+                )}
+              </Box>
             </Box>
           )}
 
@@ -783,7 +874,7 @@ const CheckoutPage = () => {
             <Box sx={{ mb: 3, p: 2, bgcolor: '#e8f5e9', borderRadius: '10px', border: '1px solid #4caf50', mt: 4 }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Typography variant="body1" sx={{ color: '#2e7d32', fontWeight: 500 }}>
-                  ✓ Ingelogd als {customerData.naam || customerData.email}
+                  ✓ {t.loggedInAs} {customerData.naam || customerData.email}
                 </Typography>
                 <Button
                   variant="outlined"
@@ -805,7 +896,7 @@ const CheckoutPage = () => {
                   }}
                   sx={{ textTransform: 'none' }}
                 >
-                  Uitloggen
+                  {t.logout}
                 </Button>
               </Box>
             </Box>
@@ -813,14 +904,14 @@ const CheckoutPage = () => {
 
           <form onSubmit={handleSubmit}>
             <Typography variant="h6" sx={{ color: brandColors.primary, fontWeight: 600, mb: 2, mt: 4 }}>
-              Bezorggegevens
+              {t.deliveryAddress}
             </Typography>
 
             <Grid container spacing={2} sx={{ mb: 2 }}>
               <Grid item xs={12} sm={6}>
                 <TextField
                   fullWidth
-                  label="Naam *"
+                  label={`${t.name} *`}
                   value={customerData.naam}
                   onChange={handleChange('naam')}
                   error={!!errors.naam}
@@ -831,7 +922,7 @@ const CheckoutPage = () => {
               <Grid item xs={12} sm={6}>
                 <TextField
                   fullWidth
-                  label="Telefoonnummer *"
+                  label={`${t.phone} *`}
                   type="tel"
                   value={customerData.telefoon}
                   onChange={handleChange('telefoon')}
@@ -844,7 +935,7 @@ const CheckoutPage = () => {
               <Grid item xs={12} sm={6}>
                 <TextField
                   fullWidth
-                  label="E-mail *"
+                  label={`${t.email} *`}
                   type="email"
                   value={customerData.email}
                   onChange={handleChange('email')}
@@ -856,7 +947,7 @@ const CheckoutPage = () => {
               <Grid item xs={12} sm={8}>
                 <TextField
                   fullWidth
-                  label="Bezorgadres *"
+                  label={`${t.street} *`}
                   value={customerData.straat}
                   onChange={handleChange('straat')}
                   error={!!errors.straat}
@@ -875,7 +966,7 @@ const CheckoutPage = () => {
               <Grid item xs={12} sm={4}>
                 <TextField
                   fullWidth
-                  label="Huisnummer *"
+                  label={`${t.houseNumber} *`}
                   value={customerData.huisnummer}
                   onChange={handleChange('huisnummer')}
                   error={!!errors.huisnummer}
@@ -885,13 +976,13 @@ const CheckoutPage = () => {
               </Grid>
               <Grid item xs={12}>
                 <FormControl fullWidth required error={!!errors.postcode_gemeente}>
-                  <InputLabel>Postcode en Gemeente *</InputLabel>
+                  <InputLabel>{t.postcode} {t.city} *</InputLabel>
                   <Select
                     value={customerData.postcode_gemeente}
                     onChange={(e) => handleChange('postcode_gemeente')({ target: { value: e.target.value } })}
-                    label="Postcode en Gemeente *"
+                    label={`${t.postcode} ${t.city} *`}
                   >
-                    <MenuItem value="">Selecteer postcode en gemeente</MenuItem>
+                    <MenuItem value="">{t.language === 'nl' ? 'Selecteer postcode en gemeente' : t.language === 'fr' ? 'Sélectionnez code postal et ville' : 'Select postcode and city'}</MenuItem>
                     {Array.isArray(postcodes) && postcodes.map((pc) => (
                       <MenuItem key={pc} value={pc}>
                         {pc}
@@ -907,16 +998,16 @@ const CheckoutPage = () => {
               </Grid>
               <Grid item xs={12}>
                 <FormControl fullWidth required error={!!errors.betaalmethode}>
-                  <InputLabel>Betaalmethode *</InputLabel>
+                  <InputLabel>{t.paymentMethod} *</InputLabel>
                   <Select
                     value={customerData.betaalmethode}
                     onChange={(e) => handleChange('betaalmethode')({ target: { value: e.target.value } })}
-                    label="Betaalmethode *"
+                    label={`${t.paymentMethod} *`}
                   >
-                    <MenuItem value="">Selecteer een betaalmethode</MenuItem>
-                    <MenuItem value="cash">💰 Contant bij bezorging</MenuItem>
-                    <MenuItem value="bancontact">💳 Bancontact bij bezorging</MenuItem>
-                    <MenuItem value="online">🌐 Online betalen (kaart / Bancontact / iDEAL via Stripe)</MenuItem>
+                    <MenuItem value="">{t.language === 'nl' ? 'Selecteer een betaalmethode' : t.language === 'fr' ? 'Sélectionnez un mode de paiement' : 'Select a payment method'}</MenuItem>
+                    <MenuItem value="cash">💰 {t.language === 'nl' ? 'Contant bij bezorging' : t.language === 'fr' ? 'Espèces à la livraison' : 'Cash on delivery'}</MenuItem>
+                    <MenuItem value="bancontact">💳 {t.language === 'nl' ? 'Bancontact bij bezorging' : t.language === 'fr' ? 'Bancontact à la livraison' : 'Bancontact on delivery'}</MenuItem>
+                    <MenuItem value="online">🌐 {t.language === 'nl' ? 'Online betalen (kaart / Bancontact / iDEAL via Stripe)' : t.language === 'fr' ? 'Paiement en ligne (carte / Bancontact / iDEAL via Stripe)' : 'Online payment (card / Bancontact / iDEAL via Stripe)'}</MenuItem>
                   </Select>
                   {errors.betaalmethode && (
                     <Typography variant="caption" color="error" sx={{ mt: 0.5, ml: 1.75 }}>
@@ -928,7 +1019,7 @@ const CheckoutPage = () => {
               {customerData.betaalmethode === 'online' && (
                 <Grid item xs={12}>
                   <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 600 }}>
-                    Kaartgegevens
+                    {t.cardDetails}
                   </Typography>
                   <Box
                     sx={{
@@ -956,14 +1047,14 @@ const CheckoutPage = () => {
                     />
                   </Box>
                   <Typography variant="caption" sx={{ mt: 1, display: 'block', color: '#666' }}>
-                    Betalingen worden veilig verwerkt via Stripe. Wij slaan geen kaartgegevens op.
+                    {t.paymentSecure}
                   </Typography>
                 </Grid>
               )}
               <Grid item xs={12}>
                 <TextField
                   fullWidth
-                  label="Opmerking (optioneel)"
+                  label={`${t.notes} (${t.optional})`}
                   multiline
                   rows={3}
                   value={customerData.opmerking}
@@ -990,7 +1081,7 @@ const CheckoutPage = () => {
                   },
                 }}
               >
-                Terug naar winkelwagen
+                {t.back} {t.cart}
               </Button>
               <Button
                 type="submit"
@@ -1008,7 +1099,7 @@ const CheckoutPage = () => {
                   '&:disabled': { bgcolor: '#ccc' },
                 }}
               >
-                {submitting ? 'Plaatsen...' : 'Bestelling plaatsen'}
+                {submitting ? t.submitting : t.placeOrder}
               </Button>
             </Box>
           </form>

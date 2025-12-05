@@ -102,18 +102,6 @@ const LoginPage = () => {
               {loading ? 'Inloggen...' : 'Inloggen'}
             </Button>
           </form>
-
-          <Box sx={{ mt: 2, p: 2, bgcolor: 'grey.100', borderRadius: 1 }}>
-            <Typography variant="caption" display="block" gutterBottom>
-              <strong>Test Accounts:</strong>
-            </Typography>
-            <Typography variant="caption" display="block">
-              Admin: admin / admin123
-            </Typography>
-            <Typography variant="caption" display="block">
-              Kassa: kassa / kassa123
-            </Typography>
-          </Box>
         </Paper>
       </Box>
     </Container>

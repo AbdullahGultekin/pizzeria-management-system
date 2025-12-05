@@ -9,6 +9,7 @@ from datetime import datetime
 class OrderItemBase(BaseModel):
     """Base order item schema."""
     product_naam: str = Field(..., max_length=200)
+    product_id: Optional[int] = None  # Product ID from menu for accurate category detection
     aantal: int = Field(..., gt=0)
     prijs: float = Field(..., gt=0)
     opmerking: Optional[str] = None

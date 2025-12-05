@@ -28,6 +28,8 @@ import {
   Grid,
   Card,
   CardContent,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material'
 import SearchIcon from '@mui/icons-material/Search'
 import VisibilityIcon from '@mui/icons-material/Visibility'
@@ -62,6 +64,9 @@ interface OrderItem {
 }
 
 const OrdersOverview = () => {
+  const theme = useTheme()
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
+  
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -95,14 +100,20 @@ const OrdersOverview = () => {
   }, [])
 
   // WebSocket for real-time updates (optional - app works without it)
+  // Only try to connect if backend is likely to support it
   const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'
   const baseUrl = API_BASE_URL.replace('/api/v1', '')
-  const wsUrl = baseUrl.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:') + '/ws'
+  
+  // Only try WebSocket if we have a valid base URL
+  let wsUrl: string | undefined
+  if (baseUrl && !baseUrl.includes('undefined')) {
+    wsUrl = baseUrl.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:') + '/ws'
+  }
   
   const { isConnected } = useWebSocket({
-    url: wsUrl,
-    autoConnect: true,
-    reconnectInterval: 10000, // Try every 10 seconds (less aggressive)
+    url: wsUrl, // Will be undefined if URL is invalid
+    autoConnect: !!wsUrl, // Only auto-connect if we have a valid URL
+    reconnectInterval: 30000, // Try every 30 seconds (much less aggressive)
     onMessage: (message) => {
       if (message.type === 'order_created' || message.type === 'order_updated') {
         // Reload orders when a new order is created or updated
@@ -363,9 +374,23 @@ const OrdersOverview = () => {
 
   return (
     <Box>
-      <Box display="flex" justifyContent="space-between" alignItems="center" sx={{ mb: 3 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <Typography variant="h5" sx={{ color: '#d32f2f', fontWeight: 600 }}>
+      <Box 
+        display="flex" 
+        justifyContent="space-between" 
+        alignItems={{ xs: 'flex-start', sm: 'center' }}
+        flexDirection={{ xs: 'column', sm: 'row' }}
+        gap={2}
+        sx={{ mb: 3 }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+          <Typography 
+            variant="h5" 
+            sx={{ 
+              color: '#d32f2f', 
+              fontWeight: 600,
+              fontSize: { xs: '1.25rem', sm: '1.5rem' },
+            }}
+          >
             Bestellingen Overzicht
           </Typography>
           <Chip
@@ -375,16 +400,21 @@ const OrdersOverview = () => {
             sx={{ fontWeight: 600 }}
           />
         </Box>
-        <Box sx={{ display: 'flex', gap: 1 }}>
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', width: { xs: '100%', sm: 'auto' } }}>
           {selectedOrderIds.length > 0 && (
             <Button
               variant="contained"
               onClick={handleDeleteSelected}
               disabled={deleting}
               startIcon={deleting ? <CircularProgress size={16} /> : <DeleteSweepIcon />}
-              sx={{ background: '#d32f2f' }}
+              sx={{ 
+                background: '#d32f2f',
+                fontSize: { xs: '0.75rem', sm: '0.875rem' },
+                px: { xs: 1, sm: 2 },
+              }}
+              fullWidth={isMobile}
             >
-              {deleting ? 'Verwijderen...' : `Verwijder ${selectedOrderIds.length} geselecteerde`}
+              {deleting ? 'Verwijderen...' : `Verwijder ${selectedOrderIds.length}`}
             </Button>
           )}
           <Button
@@ -392,7 +422,13 @@ const OrdersOverview = () => {
             onClick={handleDeleteAll}
             disabled={deleting || orders.length === 0}
             startIcon={deleting ? <CircularProgress size={16} /> : <DeleteSweepIcon />}
-            sx={{ borderColor: '#8B0000', color: '#8B0000' }}
+            sx={{ 
+              borderColor: '#8B0000', 
+              color: '#8B0000',
+              fontSize: { xs: '0.75rem', sm: '0.875rem' },
+              px: { xs: 1, sm: 2 },
+            }}
+            fullWidth={isMobile}
           >
             {deleting ? 'Verwijderen...' : 'Verwijder Alles'}
           </Button>
@@ -401,13 +437,28 @@ const OrdersOverview = () => {
             onClick={handleRenumberReceipts}
             disabled={renumbering}
             startIcon={renumbering ? <CircularProgress size={16} /> : <NumbersIcon />}
-            sx={{ borderColor: '#FFA500', color: '#FFA500' }}
+            sx={{ 
+              borderColor: '#FFA500', 
+              color: '#FFA500',
+              fontSize: { xs: '0.75rem', sm: '0.875rem' },
+              px: { xs: 1, sm: 2 },
+            }}
+            fullWidth={isMobile}
           >
-            {renumbering ? 'Hernummeren...' : 'Hernummer Bonnen'}
+            {renumbering ? 'Hernummeren...' : 'Hernummer'}
           </Button>
-          <Button variant="contained" onClick={loadOrders} sx={{ background: '#e52525' }}>
-            <RefreshIcon sx={{ mr: 1 }} />
-            Vernieuwen
+          <Button 
+            variant="contained" 
+            onClick={loadOrders} 
+            sx={{ 
+              background: '#e52525',
+              fontSize: { xs: '0.75rem', sm: '0.875rem' },
+              px: { xs: 1, sm: 2 },
+            }}
+            fullWidth={isMobile}
+          >
+            <RefreshIcon sx={{ mr: { xs: 0, sm: 1 } }} />
+            <Box component="span" sx={{ display: { xs: 'none', sm: 'inline' } }}>Vernieuwen</Box>
           </Button>
         </Box>
       </Box>
@@ -527,11 +578,27 @@ const OrdersOverview = () => {
         </Grid>
       </Grid>
 
-      <TableContainer component={Paper} sx={{ borderRadius: '10px' }}>
+      <TableContainer 
+        component={Paper} 
+        sx={{ 
+          borderRadius: '10px',
+          overflowX: 'auto',
+          '& .MuiTable-root': {
+            minWidth: 650,
+          },
+        }}
+      >
         <Table>
           <TableHead>
             <TableRow sx={{ background: '#fff5f5' }}>
-              <TableCell padding="checkbox" sx={{ fontWeight: 600, color: '#d32f2f' }}>
+              <TableCell 
+                padding="checkbox" 
+                sx={{ 
+                  fontWeight: 600, 
+                  color: '#d32f2f',
+                  display: { xs: 'none', sm: 'table-cell' },
+                }}
+              >
                 <Checkbox
                   indeterminate={selectedOrderIds.length > 0 && selectedOrderIds.length < filteredOrders.length}
                   checked={filteredOrders.length > 0 && selectedOrderIds.length === filteredOrders.length}
@@ -540,8 +607,8 @@ const OrdersOverview = () => {
                 />
               </TableCell>
               <TableCell sx={{ fontWeight: 600, color: '#d32f2f' }}>Bonnummer</TableCell>
-              <TableCell sx={{ fontWeight: 600, color: '#d32f2f' }}>Klant</TableCell>
-              <TableCell sx={{ fontWeight: 600, color: '#d32f2f' }}>Datum</TableCell>
+              <TableCell sx={{ fontWeight: 600, color: '#d32f2f', display: { xs: 'none', md: 'table-cell' } }}>Klant</TableCell>
+              <TableCell sx={{ fontWeight: 600, color: '#d32f2f', display: { xs: 'none', lg: 'table-cell' } }}>Datum</TableCell>
               <TableCell sx={{ fontWeight: 600, color: '#d32f2f' }}>Totaal</TableCell>
               <TableCell sx={{ fontWeight: 600, color: '#d32f2f' }}>Status</TableCell>
               <TableCell sx={{ fontWeight: 600, color: '#d32f2f' }}>Acties</TableCell>
@@ -565,35 +632,60 @@ const OrdersOverview = () => {
                   hover
                   selected={selectedOrderIds.includes(order.id)}
                   sx={{
-                    backgroundColor: selectedOrderIds.includes(order.id) ? '#fff3e0' : 'inherit'
+                    backgroundColor: selectedOrderIds.includes(order.id) ? '#fff3e0' : 'inherit',
+                    '&:hover': {
+                      cursor: 'pointer',
+                      bgcolor: '#fff9f9',
+                    },
                   }}
+                  onClick={() => handleViewDetails(order)}
                 >
-                  <TableCell padding="checkbox">
+                  <TableCell 
+                    padding="checkbox"
+                    onClick={(e) => e.stopPropagation()}
+                    sx={{ display: { xs: 'none', sm: 'table-cell' } }}
+                  >
                     <Checkbox
                       checked={selectedOrderIds.includes(order.id)}
                       onChange={() => handleToggleSelect(order.id)}
                       sx={{ color: '#d32f2f', '&.Mui-checked': { color: '#d32f2f' } }}
                     />
                   </TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>{order.bonnummer}</TableCell>
-                  <TableCell>{order.klant_naam || 'Geen klant'}</TableCell>
-                  <TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>
+                    <Box>
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                        {order.bonnummer}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: { xs: 'block', md: 'none' } }}>
+                        {order.klant_naam || 'Geen klant'}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: { xs: 'block', lg: 'none' } }}>
+                        {order.datum && format(parseISO(order.datum), 'dd MMM HH:mm', { locale: nl })}
+                      </Typography>
+                    </Box>
+                  </TableCell>
+                  <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
+                    {order.klant_naam || 'Geen klant'}
+                  </TableCell>
+                  <TableCell sx={{ display: { xs: 'none', lg: 'table-cell' } }}>
                     {order.datum && format(parseISO(order.datum), 'dd MMM yyyy HH:mm', { locale: nl })}
                   </TableCell>
                   <TableCell sx={{ fontWeight: 600, color: '#e52525' }}>
                     €{order.totaal.toFixed(2)}
                   </TableCell>
-                  <TableCell>
+                  <TableCell onClick={(e) => e.stopPropagation()}>
                     {updatingStatus === order.id ? (
                       <CircularProgress size={20} />
                     ) : (
-                      <FormControl size="small" sx={{ minWidth: 150 }}>
+                      <FormControl size="small" sx={{ minWidth: { xs: 100, sm: 150 } }}>
                         <Select
                           value={order.status || 'Nieuw'}
                           onChange={(e) => handleStatusChange(order.id, e.target.value)}
+                          onClick={(e) => e.stopPropagation()}
                           sx={{
                             '& .MuiSelect-select': {
                               py: 0.5,
+                              fontSize: { xs: '0.75rem', sm: '0.875rem' },
                             },
                           }}
                         >
@@ -606,8 +698,8 @@ const OrdersOverview = () => {
                       </FormControl>
                     )}
                   </TableCell>
-                  <TableCell>
-                    <Box sx={{ display: 'flex', gap: 1 }}>
+                  <TableCell onClick={(e) => e.stopPropagation()}>
+                    <Box sx={{ display: 'flex', gap: { xs: 0.5, sm: 1 }, flexWrap: 'nowrap' }}>
                       <IconButton
                         size="small"
                         onClick={() => handleViewDetails(order)}
@@ -652,6 +744,7 @@ const OrdersOverview = () => {
         onClose={() => setDetailsDialogOpen(false)}
         maxWidth="md"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>
           Bestelling Details - {selectedOrder?.bonnummer}

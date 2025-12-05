@@ -16,6 +16,8 @@ class Customer(Base):
     email_verified = Column(Integer, default=0, nullable=False)  # 0 = not verified, 1 = verified
     verification_token = Column(String, nullable=True)  # Token for email verification
     verification_token_expires = Column(String, nullable=True)  # Expiration time for token
+    password_reset_token = Column(String, nullable=True)  # Token for password reset
+    password_reset_token_expires = Column(String, nullable=True)  # Expiration time for password reset token
     naam = Column(String)
     straat = Column(String)
     huisnummer = Column(String)

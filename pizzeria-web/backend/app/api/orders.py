@@ -9,6 +9,7 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
+from app.core.config import settings
 from app.models.order import Order, OrderItem
 from app.models.customer import Customer
 from app.schemas.order import OrderCreate, OrderUpdate, OrderResponse, OrderItemResponse, OrderStatusUpdate
@@ -62,6 +63,311 @@ def generate_bonnummer(db: Session) -> str:
     # Format: YYYYNNNN (e.g., 20240001)
     bonnummer = f"{jaar}{laatste_nummer:04d}"
     return bonnummer
+
+
+# IMPORTANT: POST route must come BEFORE GET route with parameter to avoid route conflicts
+# FastAPI matches routes in order, so specific routes (POST /orders/public) must come before parameterized routes (GET /orders/public/{bonnummer})
+@router.post("/orders/public", response_model=OrderResponse, status_code=status.HTTP_201_CREATED)
+async def create_public_order(
+    request: Request,
+    order: OrderCreate,
+    db: Session = Depends(get_db)
+):
+    """
+    Create a new order (public endpoint, no authentication required).
+    """
+    # Validate customer exists if provided
+    if order.klant_id:
+        customer = db.query(Customer).filter(Customer.id == order.klant_id).first()
+        if not customer:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Klant niet gevonden"
+            )
+    
+    # Generate bonnummer
+    bonnummer = generate_bonnummer(db)
+    
+    # Get current date and time
+    now = datetime.now()
+    datum = now.strftime("%Y-%m-%d")
+    tijd = now.strftime("%H:%M:%S")
+    
+    # Calculate total from items to ensure accuracy
+    calculated_total = sum(item.prijs * item.aantal for item in order.items)
+    
+    # Log items for debugging
+    logger.info(f"Creating order with {len(order.items)} items:")
+    for item in order.items:
+        logger.info(f"  - {item.aantal}x {item.product_naam} - €{item.prijs:.2f} (subtotal: €{item.prijs * item.aantal:.2f})")
+    logger.info(f"Frontend total: €{order.totaal:.2f}, Calculated total: €{calculated_total:.2f}")
+    
+    # Use calculated total instead of frontend total to prevent errors
+    if abs(calculated_total - order.totaal) > 0.01:  # Allow small floating point differences
+        logger.warning(f"Total mismatch! Frontend sent €{order.totaal:.2f} but calculated €{calculated_total:.2f}. Using calculated total.")
+    
+    # Create order
+    db_order = Order(
+        klant_id=order.klant_id,
+        koerier_id=order.koerier_id,
+        datum=datum,
+        tijd=tijd,
+        totaal=calculated_total,  # Use calculated total for accuracy
+        opmerking=order.opmerking,
+        bonnummer=bonnummer,
+        levertijd=order.levertijd,
+        status=order.status or "Nieuw",
+        betaalmethode=getattr(order, 'betaalmethode', 'cash'),
+        online_bestelling=1,  # Mark as online order
+        status_updated_at=now
+    )
+    db.add(db_order)
+    db.flush()  # Get order ID
+    
+    # Create order items
+    for item_data in order.items:
+        # Store extras as JSON string
+        extras_json = None
+        if hasattr(item_data, 'extras') and item_data.extras:
+            extras_json = json.dumps(item_data.extras, ensure_ascii=False)
+        
+        # Get product_id if provided (for accurate category detection)
+        product_id = getattr(item_data, 'product_id', None)
+        
+        db_item = OrderItem(
+            bestelling_id=db_order.id,
+            product_naam=item_data.product_naam,
+            product_id=product_id,  # Store product_id if provided
+            aantal=item_data.aantal,
+            prijs=item_data.prijs,
+            opmerking=item_data.opmerking,
+            extras=extras_json
+        )
+        db.add(db_item)
+        logger.info(f"Added item: {item_data.aantal}x {item_data.product_naam} - €{item_data.prijs:.2f} (product_id: {product_id})")
+    
+    db.commit()
+    db.refresh(db_order)
+    
+    # Recalculate total from saved items to ensure accuracy
+    saved_items_total = sum(item.prijs * item.aantal for item in db_order.items)
+    if abs(saved_items_total - db_order.totaal) > 0.01:
+        logger.warning(f"Total mismatch after save! Stored: €{db_order.totaal:.2f}, Calculated from items: €{saved_items_total:.2f}. Updating total.")
+        db_order.totaal = saved_items_total
+        db.commit()
+        db.refresh(db_order)
+    
+    # Verify items were saved correctly
+    logger.info(f"Order {db_order.id} created with {len(db_order.items)} items, total: €{db_order.totaal:.2f}")
+    for item in db_order.items:
+        logger.info(f"  Saved item: {item.aantal}x {item.product_naam} - €{item.prijs:.2f} (subtotal: €{item.prijs * item.aantal:.2f})")
+    
+    # Update customer statistics if customer exists
+    if order.klant_id:
+        customer = db.query(Customer).filter(Customer.id == order.klant_id).first()
+        if customer:
+            customer.totaal_bestellingen += 1
+            customer.totaal_besteed += order.totaal
+            customer.laatste_bestelling = f"{datum} {tijd}"
+            db.commit()
+            # Refresh to get latest data
+            db.refresh(customer)
+    
+    logger.info(f"Public order created: {db_order.id} - Bonnummer: {bonnummer}")
+    
+    # Get customer for email verification and notifications
+    customer = None
+    if order.klant_id:
+        customer = db.query(Customer).filter(Customer.id == order.klant_id).first()
+        if customer:
+            logger.info(f"Order {bonnummer}: Customer found - ID: {customer.id}, Email: {customer.email}, Phone: {customer.telefoon}")
+        else:
+            logger.warning(f"Order {bonnummer}: Customer ID {order.klant_id} not found in database")
+    else:
+        logger.warning(f"Order {bonnummer}: No customer ID provided")
+    
+    # Send email verification if customer has email but is not verified
+    if customer and customer.email and settings.EMAIL_VERIFICATION_REQUIRED:
+        from app.services.email_verification import email_verification_service
+        
+        # Check if email is not verified
+        if customer.email_verified != 1:
+            logger.info(f"Customer {customer.id} has unverified email {customer.email} - sending verification email")
+            
+            # Generate verification token if not exists or expired
+            if not customer.verification_token:
+                email_verification_service.create_verification_token(customer, db)
+                # Refresh customer to get the new token
+                db.refresh(customer)
+            
+            # Get base URL for verification link
+            base_url = request.headers.get("Origin")
+            if not base_url and request.headers.get("Referer"):
+                referer = request.headers.get("Referer")
+                base_url = referer.rsplit("/", 1)[0] if "/" in referer else referer
+            if not base_url:
+                base_url = settings.FRONTEND_URL
+            
+            # Store customer data for background task (to avoid database session issues)
+            customer_id = customer.id
+            customer_email = customer.email
+            customer_name = customer.naam
+            verification_token = customer.verification_token
+            
+            # Send verification email with bonnummer (background task)
+            async def send_verification_email_task():
+                """Helper function to send verification email in background."""
+                try:
+                    # Get fresh database session for background task
+                    from app.core.database import SessionLocal
+                    background_db = SessionLocal()
+                    try:
+                        # Get customer again with fresh session
+                        background_customer = background_db.query(Customer).filter(Customer.id == customer_id).first()
+                        if background_customer and background_customer.verification_token == verification_token:
+                            await email_verification_service.send_verification_email(
+                                background_customer, 
+                                base_url, 
+                                order_bonnummer=bonnummer
+                            )
+                            logger.info(f"Verification email sent to customer {customer_id} ({customer_email}) with bonnummer {bonnummer}")
+                        else:
+                            logger.warning(f"Customer {customer_id} not found or token changed, skipping email")
+                    finally:
+                        background_db.close()
+                except Exception as e:
+                    logger.error(f"Error sending verification email to {customer_email}: {e}")
+                    logger.exception("Full error traceback:")
+            
+            try:
+                import asyncio
+                # Create task in current event loop
+                asyncio.create_task(send_verification_email_task())
+                logger.info(f"Verification email task created for customer {customer_id} ({customer_email}) with bonnummer {bonnummer}")
+            except Exception as e:
+                logger.error(f"Error creating verification email task: {e}")
+                logger.exception("Full error traceback:")
+    
+    # Send notifications
+    try:
+        from app.services.notification import notification_service
+        import asyncio
+        
+        # Get customer contact info if available - refresh customer to get latest email
+        customer_email = None
+        customer_phone = None
+        if customer:
+            # Refresh customer to ensure we have latest data including email
+            db.refresh(customer)
+            customer_email = customer.email  # FIX: Use actual email from Customer model
+            customer_phone = customer.telefoon
+            logger.info(f"Order {bonnummer}: Customer email = {customer_email}, phone = {customer_phone}")
+        
+        # Build items with extras
+        items_data = []
+        for item in db_order.items:
+            item_dict = {
+                "product_naam": item.product_naam,
+                "aantal": item.aantal,
+                "prijs": item.prijs
+            }
+            # Parse extras if available
+            if item.extras:
+                try:
+                    extras = json.loads(item.extras) if isinstance(item.extras, str) else item.extras
+                    item_dict["extras"] = extras
+                except (json.JSONDecodeError, TypeError):
+                    item_dict["extras"] = None
+            else:
+                item_dict["extras"] = None
+            items_data.append(item_dict)
+        
+        order_notification_data = {
+            "id": db_order.id,
+            "bonnummer": db_order.bonnummer,
+            "totaal": db_order.totaal,
+            "datum": db_order.datum,
+            "tijd": db_order.tijd,
+            "status": db_order.status or "Nieuw",
+            "items": items_data
+        }
+        
+        # Send customer confirmation (async task with proper error handling)
+        async def send_confirmation_task():
+            """Helper function to send order confirmation email."""
+            try:
+                logger.info(f"Starting order confirmation email task for order {bonnummer}")
+                success = await notification_service.send_order_confirmation(
+                    order_notification_data,
+                    customer_email,
+                    customer_phone
+                )
+                if success:
+                    logger.info(f"Order confirmation email task completed for order {bonnummer}")
+                else:
+                    logger.warning(f"Order confirmation email task failed for order {bonnummer}")
+            except Exception as e:
+                logger.error(f"Error in order confirmation email task: {e}")
+                logger.exception("Full error traceback:")
+        
+        # Create task in current event loop
+        try:
+            asyncio.create_task(send_confirmation_task())
+            logger.info(f"Order confirmation email task created for order {bonnummer}")
+        except Exception as e:
+            logger.error(f"Error creating order confirmation email task: {e}")
+            logger.exception("Full error traceback:")
+        
+        # Send admin notification (async, don't wait)
+        try:
+            asyncio.create_task(
+                notification_service.send_admin_notification(order_notification_data)
+            )
+        except Exception as e:
+            logger.warning(f"Could not create admin notification task: {e}")
+    except Exception as e:
+        logger.error(f"Could not send notifications: {e}")
+        logger.exception("Full error traceback:")
+    
+    # Broadcast new order to admin clients via WebSocket
+    try:
+        from app.api.websocket import broadcast_new_order
+        broadcast_new_order({
+            "id": db_order.id,
+            "bonnummer": db_order.bonnummer,
+            "totaal": db_order.totaal,
+            "datum": db_order.datum,
+            "tijd": db_order.tijd,
+            "status": db_order.status or "Nieuw",
+            "klant_naam": None  # Will be filled if klant_id exists
+        })
+    except Exception as e:
+        logger.warning(f"Could not broadcast new order: {e}")
+    
+    # Return order with items
+    return {
+        "id": db_order.id,
+        "klant_id": db_order.klant_id,
+        "koerier_id": db_order.koerier_id,
+        "datum": db_order.datum,
+        "tijd": db_order.tijd,
+        "totaal": db_order.totaal,
+        "opmerking": db_order.opmerking,
+        "bonnummer": db_order.bonnummer,
+        "levertijd": db_order.levertijd,
+        "status": db_order.status or "Nieuw",
+        "items": [
+            {
+                "id": item.id,
+                "bestelling_id": item.bestelling_id,
+                "product_naam": item.product_naam,
+                "aantal": item.aantal,
+                "prijs": item.prijs,
+                "opmerking": item.opmerking
+            }
+            for item in db_order.items
+        ]
+    }
 
 
 @router.get("/orders/public/{bonnummer}")
@@ -221,169 +527,6 @@ async def get_order(
     }
 
 
-@router.post("/orders/public", response_model=OrderResponse, status_code=status.HTTP_201_CREATED)
-async def create_public_order(
-    request: Request,
-    order: OrderCreate,
-    db: Session = Depends(get_db)
-):
-    """
-    Create a new order (public endpoint, no authentication required).
-    """
-    # Validate customer exists if provided
-    if order.klant_id:
-        customer = db.query(Customer).filter(Customer.id == order.klant_id).first()
-        if not customer:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Klant niet gevonden"
-            )
-    
-    # Generate bonnummer
-    bonnummer = generate_bonnummer(db)
-    
-    # Get current date and time
-    now = datetime.now()
-    datum = now.strftime("%Y-%m-%d")
-    tijd = now.strftime("%H:%M:%S")
-    
-    # Create order
-    db_order = Order(
-        klant_id=order.klant_id,
-        koerier_id=order.koerier_id,
-        datum=datum,
-        tijd=tijd,
-        totaal=order.totaal,
-        opmerking=order.opmerking,
-        bonnummer=bonnummer,
-        levertijd=order.levertijd,
-        status=order.status or "Nieuw",
-        betaalmethode=getattr(order, 'betaalmethode', 'cash'),
-        online_bestelling=1,  # Mark as online order
-        status_updated_at=now
-    )
-    db.add(db_order)
-    db.flush()  # Get order ID
-    
-    # Create order items
-    for item_data in order.items:
-        # Store extras as JSON string
-        extras_json = None
-        if hasattr(item_data, 'extras') and item_data.extras:
-            extras_json = json.dumps(item_data.extras, ensure_ascii=False)
-        
-        db_item = OrderItem(
-            bestelling_id=db_order.id,
-            product_naam=item_data.product_naam,
-            aantal=item_data.aantal,
-            prijs=item_data.prijs,
-            opmerking=item_data.opmerking,
-            extras=extras_json
-        )
-        db.add(db_item)
-    
-    db.commit()
-    db.refresh(db_order)
-    
-    # Update customer statistics if customer exists
-    if order.klant_id:
-        customer = db.query(Customer).filter(Customer.id == order.klant_id).first()
-        if customer:
-            customer.totaal_bestellingen += 1
-            customer.totaal_besteed += order.totaal
-            customer.laatste_bestelling = f"{datum} {tijd}"
-            db.commit()
-    
-    logger.info(f"Public order created: {db_order.id} - Bonnummer: {bonnummer}")
-    
-    # Send notifications
-    try:
-        from app.services.notification import notification_service
-        import asyncio
-        
-        # Get customer contact info if available
-        customer_email = None
-        customer_phone = None
-        if order.klant_id:
-            customer = db.query(Customer).filter(Customer.id == order.klant_id).first()
-            if customer:
-                customer_email = None  # Email not available in Customer model
-                customer_phone = customer.telefoon
-        
-        order_notification_data = {
-            "id": db_order.id,
-            "bonnummer": db_order.bonnummer,
-            "totaal": db_order.totaal,
-            "datum": db_order.datum,
-            "tijd": db_order.tijd,
-            "status": db_order.status or "Nieuw",
-            "items": [
-                {
-                    "product_naam": item.product_naam,
-                    "aantal": item.aantal,
-                    "prijs": item.prijs
-                }
-                for item in db_order.items
-            ]
-        }
-        
-        # Send customer confirmation (async, don't wait)
-        asyncio.create_task(
-            notification_service.send_order_confirmation(
-                order_notification_data,
-                customer_email,
-                customer_phone
-            )
-        )
-        
-        # Send admin notification (async, don't wait)
-        asyncio.create_task(
-            notification_service.send_admin_notification(order_notification_data)
-        )
-    except Exception as e:
-        logger.warning(f"Could not send notifications: {e}")
-    
-    # Broadcast new order to admin clients via WebSocket
-    try:
-        from app.api.websocket import broadcast_new_order
-        broadcast_new_order({
-            "id": db_order.id,
-            "bonnummer": db_order.bonnummer,
-            "totaal": db_order.totaal,
-            "datum": db_order.datum,
-            "tijd": db_order.tijd,
-            "status": db_order.status or "Nieuw",
-            "klant_naam": None  # Will be filled if klant_id exists
-        })
-    except Exception as e:
-        logger.warning(f"Could not broadcast new order: {e}")
-    
-    # Return order with items
-    return {
-        "id": db_order.id,
-        "klant_id": db_order.klant_id,
-        "koerier_id": db_order.koerier_id,
-        "datum": db_order.datum,
-        "tijd": db_order.tijd,
-        "totaal": db_order.totaal,
-        "opmerking": db_order.opmerking,
-        "bonnummer": db_order.bonnummer,
-        "levertijd": db_order.levertijd,
-        "status": db_order.status or "Nieuw",
-        "items": [
-            {
-                "id": item.id,
-                "bestelling_id": item.bestelling_id,
-                "product_naam": item.product_naam,
-                "aantal": item.aantal,
-                "prijs": item.prijs,
-                "opmerking": item.opmerking
-            }
-            for item in db_order.items
-        ]
-    }
-
-
 @router.post("/orders", response_model=OrderResponse, status_code=status.HTTP_201_CREATED)
 async def create_order(
     request: Request,
@@ -433,9 +576,13 @@ async def create_order(
         if hasattr(item_data, 'extras') and item_data.extras:
             extras_json = json.dumps(item_data.extras, ensure_ascii=False)
         
+        # Get product_id if provided (for accurate category detection)
+        product_id = getattr(item_data, 'product_id', None)
+        
         db_item = OrderItem(
             bestelling_id=db_order.id,
             product_naam=item_data.product_naam,
+            product_id=product_id,  # Store product_id if provided
             aantal=item_data.aantal,
             prijs=item_data.prijs,
             opmerking=item_data.opmerking,
@@ -532,7 +679,7 @@ async def update_order(
         if order.klant_id:
             customer = db.query(Customer).filter(Customer.id == order.klant_id).first()
             if customer:
-                customer_email = None  # Email not available in Customer model
+                customer_email = customer.email  # FIX: Use actual email from Customer model
                 customer_phone = customer.telefoon
         
         status_update_data = {
@@ -817,7 +964,7 @@ async def get_pending_online_orders(
                         klant_straat = customer.straat
                         klant_huisnummer = customer.huisnummer
                         klant_telefoon = customer.telefoon
-                        klant_email = None  # Email not available in Customer model
+                        klant_email = customer.email  # FIX: Use actual email from Customer model
                         
                         # Parse plaats (usually "Postcode Gemeente" format)
                         if customer.plaats:
@@ -863,6 +1010,7 @@ async def get_pending_online_orders(
                             "id": item.id,
                             "bestelling_id": item.bestelling_id,
                             "product_naam": item.product_naam,
+                            "product_id": item.product_id,  # Include product_id in response
                             "aantal": item.aantal,
                             "prijs": float(item.prijs),
                             "opmerking": item.opmerking,
@@ -951,7 +1099,7 @@ async def update_order_status(
         if order.klant_id:
             customer = db.query(Customer).filter(Customer.id == order.klant_id).first()
             if customer:
-                customer_email = None  # Email not available in Customer model
+                customer_email = customer.email  # FIX: Use actual email from Customer model
                 customer_phone = customer.telefoon
         
         status_update_data = {
@@ -999,7 +1147,7 @@ async def update_order_status(
             else:
                 klant_adres = customer.plaats if customer.plaats else None
             klant_telefoon = customer.telefoon
-            klant_email = None  # Email not available in Customer model
+            klant_email = customer.email  # FIX: Use actual email from Customer model
     
     return {
         "id": order.id,

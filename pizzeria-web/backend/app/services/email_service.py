@@ -3,8 +3,10 @@ Email service for sending emails via SMTP.
 """
 import smtplib
 import logging
+import os
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.mime.image import MIMEImage
 from typing import Optional, List
 from app.core.config import settings
 
@@ -35,7 +37,8 @@ class EmailService:
         to_email: str,
         subject: str,
         body: str,
-        html_body: Optional[str] = None
+        html_body: Optional[str] = None,
+        logo_path: Optional[str] = None
     ) -> bool:
         """
         Send an email via SMTP.
@@ -51,12 +54,13 @@ class EmailService:
         """
         if not self.enabled:
             # Log the email instead of sending
-            logger.info(f"Email would be sent to: {to_email}")
-            logger.info(f"Subject: {subject}")
-            logger.info(f"Body:\n{body}")
+            logger.warning(f"Email service not configured - email would be sent to: {to_email}")
+            logger.warning(f"Subject: {subject}")
+            logger.warning(f"Body:\n{body}")
             if html_body:
-                logger.info(f"HTML Body:\n{html_body}")
-            return True
+                logger.warning(f"HTML Body:\n{html_body}")
+            logger.error("SMTP is not configured. Set SMTP_HOST, SMTP_USER, SMTP_PASSWORD, and SMTP_FROM_EMAIL environment variables.")
+            return False
         
         try:
             # Create message
@@ -71,6 +75,23 @@ class EmailService:
             
             # Add HTML part if provided
             if html_body:
+                # If logo_path is provided, attach it as CID
+                if logo_path and os.path.exists(logo_path):
+                    try:
+                        with open(logo_path, 'rb') as logo_file:
+                            logo_data = logo_file.read()
+                            logo_image = MIMEImage(logo_data)
+                            logo_image.add_header('Content-ID', '<logo>')
+                            logo_image.add_header('Content-Disposition', 'inline', filename='logo.jpg')
+                            msg.attach(logo_image)
+                            # Replace data URI or URL with CID in HTML
+                            import re
+                            html_body = re.sub(r'src=["\']data:image/[^"\']+["\']', 'src="cid:logo"', html_body)
+                            html_body = re.sub(r'src=["\'][^"\']*LOGO-MAGNEET\.jpg[^"\']*["\']', 'src="cid:logo"', html_body)
+                            logger.info(f"Logo attached as CID from {logo_path}")
+                    except Exception as e:
+                        logger.warning(f"Could not attach logo: {e}")
+                
                 html_part = MIMEText(html_body, 'html', 'utf-8')
                 msg.attach(html_part)
             

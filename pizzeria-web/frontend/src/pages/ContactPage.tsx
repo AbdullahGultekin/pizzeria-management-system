@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Container,
   Box,
@@ -9,7 +9,7 @@ import {
   Grid,
   Alert,
 } from '@mui/material'
-import { contactAPI } from '../services/api'
+import { contactAPI, settingsAPI } from '../services/api'
 import { getErrorMessage } from '../utils/errorHandler'
 import {
   LocationOn as LocationIcon,
@@ -19,8 +19,18 @@ import {
 } from '@mui/icons-material'
 import PublicHeader from '../components/PublicHeader'
 import { brandColors } from '../theme/colors'
+import { useTranslations } from '../hooks/useTranslations'
+
+interface OpeningHours {
+  [key: string]: {
+    open: boolean
+    open_time: string
+    close_time: string
+  }
+}
 
 const ContactPage = () => {
+  const { t } = useTranslations()
   const [formData, setFormData] = useState({
     naam: '',
     email: '',
@@ -31,32 +41,86 @@ const ContactPage = () => {
   const [submitting, setSubmitting] = useState(false)
   const [success, setSuccess] = useState(false)
   const [error, setError] = useState('')
+  const [openingHours, setOpeningHours] = useState<OpeningHours | null>(null)
 
-  const openingstijden = [
-    { dag: 'Maandag', tijd: 'Gesloten' },
-    { dag: 'Dinsdag', tijd: '17:00 - 20:30' },
-    { dag: 'Woensdag', tijd: '17:00 - 20:30' },
-    { dag: 'Donderdag', tijd: '17:00 - 20:30' },
-    { dag: 'Vrijdag', tijd: '17:00 - 20:30' },
-    { dag: 'Zaterdag', tijd: '17:00 - 20:30' },
-    { dag: 'Zondag', tijd: '17:00 - 20:30' },
-  ]
+  // Map day names to translation keys
+  const dayMap: { [key: string]: string } = {
+    monday: t.monday,
+    tuesday: t.tuesday,
+    wednesday: t.wednesday,
+    thursday: t.thursday,
+    friday: t.friday,
+    saturday: t.saturday,
+    sunday: t.sunday,
+  }
+
+  // Load opening hours from API
+  useEffect(() => {
+    const loadOpeningHours = async () => {
+      try {
+        const hours = await settingsAPI.getOpeningHours()
+        setOpeningHours(hours)
+      } catch (error) {
+        console.error('Error loading opening hours:', error)
+        // Use default if API fails
+        setOpeningHours({
+          monday: { open: false, open_time: '17:00', close_time: '20:30' },
+          tuesday: { open: true, open_time: '17:00', close_time: '20:30' },
+          wednesday: { open: true, open_time: '17:00', close_time: '20:30' },
+          thursday: { open: true, open_time: '17:00', close_time: '20:30' },
+          friday: { open: true, open_time: '17:00', close_time: '20:30' },
+          saturday: { open: true, open_time: '17:00', close_time: '20:30' },
+          sunday: { open: true, open_time: '17:00', close_time: '20:30' },
+        })
+      }
+    }
+    loadOpeningHours()
+  }, [])
+
+  // Format opening hours for display
+  const getOpeningstijden = () => {
+    if (!openingHours) {
+      return [
+        { dag: t.monday, tijd: t.closed },
+        { dag: t.tuesday, tijd: '17:00 - 20:30' },
+        { dag: t.wednesday, tijd: '17:00 - 20:30' },
+        { dag: t.thursday, tijd: '17:00 - 20:30' },
+        { dag: t.friday, tijd: '17:00 - 20:30' },
+        { dag: t.saturday, tijd: '17:00 - 20:30' },
+        { dag: t.sunday, tijd: '17:00 - 20:30' },
+      ]
+    }
+
+    const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+    return days.map((day) => {
+      const dayConfig = openingHours[day]
+      const dag = dayMap[day] || day
+      if (dayConfig && dayConfig.open) {
+        const tijd = `${dayConfig.open_time} - ${dayConfig.close_time}`
+        return { dag, tijd }
+      } else {
+        return { dag, tijd: t.closed }
+      }
+    })
+  }
+
+  const openingstijden = getOpeningstijden()
 
   const validateForm = () => {
     const newErrors: Partial<typeof formData> = {}
     
     if (!formData.naam.trim()) {
-      newErrors.naam = 'Naam is verplicht'
+      newErrors.naam = t.nameRequired
     }
     
     if (!formData.email.trim()) {
-      newErrors.email = 'E-mail is verplicht'
+      newErrors.email = t.emailRequired
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      newErrors.email = 'Ongeldig e-mailadres'
+      newErrors.email = t.invalidEmail
     }
     
     if (!formData.bericht.trim()) {
-      newErrors.bericht = 'Bericht is verplicht'
+      newErrors.bericht = t.messageRequired
     }
     
     setErrors(newErrors)
@@ -129,7 +193,7 @@ const ContactPage = () => {
                   borderBottom: '2px solid brandColors.primary',
                 }}
               >
-                Contactgegevens
+                {t.contactUs}
               </Typography>
 
               <Box sx={{ mb: 3 }}>
@@ -172,7 +236,7 @@ const ContactPage = () => {
                   variant="h6"
                   sx={{ color: brandColors.primary, mb: 2 }}
                 >
-                  Openingstijden
+                  {t.openingHours}
                 </Typography>
                 <Box component="table" sx={{ width: '100%' }}>
                   <Box component="tbody">
@@ -238,7 +302,7 @@ const ContactPage = () => {
                 }}
               >
                 <RouteIcon sx={{ mr: 1 }} />
-                Route plannen met Google Maps
+                {t.planRoute}
               </Box>
             </Paper>
           </Grid>
@@ -262,10 +326,10 @@ const ContactPage = () => {
                   borderBottom: '2px solid brandColors.primary',
                 }}
               >
-                Stuur ons een bericht
+                {t.contactFormTitle}
               </Typography>
               <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
-                Heb je vragen, opmerkingen of wil je direct bestellen? Neem contact met ons op!
+                {t.contactFormDescription}
               </Typography>
 
               {error && (
@@ -276,14 +340,14 @@ const ContactPage = () => {
 
               {success && (
                 <Alert severity="success" sx={{ mb: 2 }}>
-                  Bedankt voor je bericht! We nemen zo spoedig mogelijk contact met je op.
+                  {t.messageSent}
                 </Alert>
               )}
 
               <Box component="form" onSubmit={handleSubmit}>
                 <TextField
                   fullWidth
-                  label="Naam"
+                  label={t.name}
                   value={formData.naam}
                   onChange={handleChange('naam')}
                   error={!!errors.naam}
@@ -294,7 +358,7 @@ const ContactPage = () => {
 
                 <TextField
                   fullWidth
-                  label="E-mail"
+                  label={t.email}
                   type="email"
                   value={formData.email}
                   onChange={handleChange('email')}
@@ -306,7 +370,7 @@ const ContactPage = () => {
 
                 <TextField
                   fullWidth
-                  label="Telefoonnummer"
+                  label={t.phone}
                   type="tel"
                   value={formData.telefoon}
                   onChange={handleChange('telefoon')}
@@ -315,7 +379,7 @@ const ContactPage = () => {
 
                 <TextField
                   fullWidth
-                  label="Bericht"
+                  label={t.message}
                   multiline
                   rows={6}
                   value={formData.bericht}
@@ -339,7 +403,7 @@ const ContactPage = () => {
                     '&:hover': { bgcolor: brandColors.primaryDark },
                   }}
                 >
-                  {submitting ? 'Versturen...' : 'Versturen'}
+                  {submitting ? t.submitting : t.sendMessage}
                 </Button>
               </Box>
             </Paper>
@@ -359,7 +423,7 @@ const ContactPage = () => {
         }}
       >
         <Typography>
-          &copy; 2025 Pita Pizza Napoli - Alle rechten voorbehouden
+          &copy; 2025 Pita Pizza Napoli - {t.allRightsReserved}
         </Typography>
       </Box>
     </Box>

@@ -37,6 +37,8 @@ export const getErrorMessage = (error: any): string => {
       return 'U heeft geen toegang tot deze functie.'
     case 404:
       return data?.detail || 'Niet gevonden.'
+    case 405:
+      return data?.detail || 'Methode niet toegestaan. Probeer het opnieuw.'
     case 409:
       return data?.detail || 'Conflict. Deze gegevens bestaan al.'
     case 422:

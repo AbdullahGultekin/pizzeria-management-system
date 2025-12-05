@@ -17,6 +17,7 @@ import { Search, LocalShipping, CheckCircle, AccessTime, Restaurant } from '@mui
 import { orderAPI } from '../services/api'
 import { brandColors } from '../theme/colors'
 import PublicHeader from '../components/PublicHeader'
+import { useTranslations } from '../hooks/useTranslations'
 
 interface OrderItem {
   id: number
@@ -47,6 +48,7 @@ const statusColors: Record<string, { color: 'default' | 'primary' | 'secondary' 
 }
 
 export default function OrderTrackingPage() {
+  const { t, translateProduct } = useTranslations()
   const [searchParams] = useSearchParams()
   const [bonnummer, setBonnummer] = useState('')
   const [phone, setPhone] = useState('')
@@ -59,12 +61,12 @@ export default function OrderTrackingPage() {
     const trackPhone = phone.trim()
     
     if (!trackBonnummer) {
-      setError('Voer een bonnummer in')
+      setError(t.language === 'nl' ? 'Voer een bonnummer in' : t.language === 'fr' ? 'Entrez un numéro de commande' : 'Enter an order number')
       return
     }
 
     if (!trackPhone) {
-      setError('Telefoonnummer is verplicht om je bestelling te volgen')
+      setError(t.language === 'nl' ? 'Telefoonnummer is verplicht om je bestelling te volgen' : t.language === 'fr' ? 'Le numéro de téléphone est requis pour suivre votre commande' : 'Phone number is required to track your order')
       return
     }
 
@@ -76,7 +78,7 @@ export default function OrderTrackingPage() {
       const response = await orderAPI.trackOrder(trackBonnummer, trackPhone)
       setOrder(response)
     } catch (err: any) {
-      const errorMsg = err.response?.data?.detail || err.message || 'Bestelling niet gevonden. Controleer het bonnummer en telefoonnummer.'
+      const errorMsg = err.response?.data?.detail || err.message || t.orderNotFound
       setError(errorMsg)
       setOrder(null)
     } finally {
@@ -125,10 +127,10 @@ export default function OrderTrackingPage() {
       <Container maxWidth="md" sx={{ py: 4, flex: 1 }}>
         <Box sx={{ mb: 4, textAlign: 'center' }}>
           <Typography variant="h4" component="h1" gutterBottom sx={{ color: brandColors.primary, fontWeight: 'bold' }}>
-            Bestelling Volgen
+            {t.trackYourOrder}
           </Typography>
           <Typography variant="body1" color="text.secondary">
-            Volg je bestelling met je bonnummer en telefoonnummer (verplicht voor beveiliging)
+            {t.language === 'nl' ? 'Volg je bestelling met je bonnummer en telefoonnummer (verplicht voor beveiliging)' : t.language === 'fr' ? 'Suivez votre commande avec votre numéro de commande et votre numéro de téléphone (obligatoire pour la sécurité)' : 'Track your order with your order number and phone number (required for security)'}
           </Typography>
         </Box>
 
@@ -138,25 +140,25 @@ export default function OrderTrackingPage() {
             <Grid item xs={12} md={6}>
               <TextField
                 fullWidth
-                label="Bonnummer *"
+                label={`${t.orderNumber} *`}
                 value={bonnummer}
                 onChange={(e) => setBonnummer(e.target.value)}
                 placeholder="Bijv. 20240001"
                 required
                 disabled={loading}
-                helperText="Het bonnummer dat je hebt ontvangen bij je bestelling"
+                helperText={t.helperTextOrderNumber}
               />
             </Grid>
             <Grid item xs={12} md={6}>
               <TextField
                 fullWidth
-                label="Telefoonnummer *"
+                label={`${t.phone} *`}
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 placeholder="Bijv. +32477123456"
                 required
                 disabled={loading}
-                helperText="Verplicht om je bestelling te volgen (beveiliging)"
+                helperText={t.helperTextPhoneRequired}
                 error={!phone.trim() && bonnummer.trim() !== ''}
               />
             </Grid>
@@ -174,7 +176,7 @@ export default function OrderTrackingPage() {
                   py: 1.5,
                 }}
               >
-                {loading ? 'Zoeken...' : 'Bestelling Zoeken'}
+                {loading ? t.loading : t.track}
               </Button>
             </Grid>
           </Grid>
@@ -193,11 +195,11 @@ export default function OrderTrackingPage() {
             <Grid container spacing={2} alignItems="center">
               <Grid item xs={12} sm={6}>
                 <Typography variant="h5" component="h2" gutterBottom>
-                  Bestelling #{order.bonnummer}
+                  {t.orderNumber} #{order.bonnummer}
                 </Typography>
                 {order.klant_naam && (
                   <Typography variant="body2" color="text.secondary">
-                    Besteld door: {order.klant_naam}
+                    {t.orderPlacedBy} {order.klant_naam}
                   </Typography>
                 )}
               </Grid>
@@ -223,7 +225,7 @@ export default function OrderTrackingPage() {
           <Grid container spacing={3}>
             <Grid item xs={12} md={6}>
               <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                Besteldatum
+                {t.orderDate}
               </Typography>
               <Typography variant="body1" gutterBottom>
                 {formatDate(order.datum)} om {formatTime(order.tijd)}
@@ -232,26 +234,26 @@ export default function OrderTrackingPage() {
             {order.levertijd && (
               <Grid item xs={12} md={6}>
                 <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                  Verwachte levertijd
+                  {t.deliveryTime}
                 </Typography>
                 <Typography variant="body1" gutterBottom>
-                  {order.levertijd} minuten
+                  {order.levertijd} {t.minutes}
                 </Typography>
               </Grid>
             )}
             <Grid item xs={12} md={6}>
               <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                Betaalmethode
+                {t.paymentMethod}
               </Typography>
               <Typography variant="body1" gutterBottom>
                 {order.betaalmethode === 'bancontact' ? 'Bancontact' : 
-                 order.betaalmethode === 'cash' ? 'Contant' : 
-                 order.betaalmethode || 'Niet gespecificeerd'}
+                 order.betaalmethode === 'cash' ? (t.language === 'nl' ? 'Contant' : t.language === 'fr' ? 'Espèces' : 'Cash') : 
+                 order.betaalmethode || t.paymentMethodNotSpecified}
               </Typography>
             </Grid>
             <Grid item xs={12} md={6}>
               <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                Totaalbedrag
+                {t.total}
               </Typography>
               <Typography variant="h6" sx={{ color: brandColors.primary, fontWeight: 'bold' }}>
                 €{order.totaal.toFixed(2)}
@@ -264,7 +266,7 @@ export default function OrderTrackingPage() {
               <Divider sx={{ my: 3 }} />
               <Box>
                 <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                  Opmerking
+                  {t.comment}
                 </Typography>
                 <Typography variant="body1">
                   {order.opmerking}
@@ -277,7 +279,7 @@ export default function OrderTrackingPage() {
 
           <Box>
             <Typography variant="h6" gutterBottom sx={{ mb: 2 }}>
-              Bestelde Items
+              {t.items}
             </Typography>
             {order.items.map((item, index) => (
               <Box
@@ -292,7 +294,7 @@ export default function OrderTrackingPage() {
               >
                 <Box>
                   <Typography variant="body1" fontWeight="medium">
-                    {item.aantal}x {item.product_naam}
+                    {item.aantal}x {translateProduct(item.product_naam)}
                   </Typography>
                 </Box>
                 <Typography variant="body1" fontWeight="medium">
@@ -306,10 +308,10 @@ export default function OrderTrackingPage() {
 
         <Box sx={{ mt: 4, textAlign: 'center' }}>
           <Typography variant="body2" color="text.secondary">
-            Geen account nodig om je bestelling te volgen
+            {t.noAccountNeeded}
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-            Heb je een account? <a href="/login" style={{ color: brandColors.primary }}>Log in</a> om al je bestellingen te zien
+            {t.haveAccount} <a href="/login" style={{ color: brandColors.primary }}>{t.login}</a> {t.logInToSee}
           </Typography>
         </Box>
       </Container>

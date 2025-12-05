@@ -28,6 +28,7 @@ import PublicHeader from '../components/PublicHeader'
 import { useNavigate } from 'react-router-dom'
 import { getErrorMessage } from '../utils/errorHandler'
 import { brandColors } from '../theme/colors'
+import { useTranslations } from '../hooks/useTranslations'
 
 interface MenuItem {
   id: number
@@ -51,6 +52,7 @@ interface CartItem {
 
 const PublicMenuPage = () => {
   const navigate = useNavigate()
+  const { t, translateCategory, translateProduct } = useTranslations()
   const [menu, setMenu] = useState<any>(null)
   const [extrasConfig, setExtrasConfig] = useState<any>({})
   const [loading, setLoading] = useState(true)
@@ -128,7 +130,7 @@ const PublicMenuPage = () => {
     const cartItem: CartItem = {
       id: `${Date.now()}-${Math.random()}`,
       product_id: productData.product_id,
-      naam: productData.naam,
+      naam: productData.naam, // Keep original name for cart, translate when displaying
       prijs: productData.prijs,
       aantal: productData.aantal || 1,
       categorie: productData.categorie,
@@ -164,11 +166,13 @@ const PublicMenuPage = () => {
     return cartItems.reduce((sum, item) => sum + item.prijs * item.aantal, 0)
   }
 
-  // Format category name - capitalize first letter and make it modern
+  // Format category name - translate and capitalize first letter
   const formatCategoryName = (name: string) => {
     if (!name) return ''
+    // Translate the category name
+    const translated = translateCategory(name)
     // Replace hyphens with spaces and capitalize each word
-    return name
+    return translated
       .split('-')
       .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
       .join(' ')
@@ -826,7 +830,7 @@ const PublicMenuPage = () => {
                                 mb: 0.5,
                               }}
                             >
-                              {item.naam}
+                              {translateProduct(item.naam)}
                             </Typography>
                             {item.beschrijving && (
                               <Typography

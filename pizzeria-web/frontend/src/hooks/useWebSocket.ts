@@ -36,27 +36,68 @@ export const useWebSocket = (options: UseWebSocketOptions = {}) => {
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const shouldReconnectRef = useRef(true)
+  const failureCountRef = useRef(0)
+  const isConnectingRef = useRef(false)
+  
+  // Store callbacks in refs to prevent unnecessary re-renders
+  const onMessageRef = useRef(onMessage)
+  const onOpenRef = useRef(onOpen)
+  const onCloseRef = useRef(onClose)
+  const onErrorRef = useRef(onError)
+  
+  // Update refs when callbacks change
+  useEffect(() => {
+    onMessageRef.current = onMessage
+    onOpenRef.current = onOpen
+    onCloseRef.current = onClose
+    onErrorRef.current = onError
+  }, [onMessage, onOpen, onClose, onError])
 
   const connect = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN || wsRef.current?.readyState === WebSocket.CONNECTING) {
+    // Prevent multiple simultaneous connection attempts
+    if (isConnectingRef.current || wsRef.current?.readyState === WebSocket.OPEN || wsRef.current?.readyState === WebSocket.CONNECTING) {
       return
     }
 
     // Don't try to connect if URL is invalid
-    if (!url || url === 'undefined/ws') {
+    if (!url || url === 'undefined/ws' || url.includes('undefined')) {
       console.warn('WebSocket URL is invalid, skipping connection')
+      shouldReconnectRef.current = false // Stop trying
+      return
+    }
+
+    // Check if we've already failed too many times
+    if (failureCountRef.current >= 3) {
+      shouldReconnectRef.current = false // Stop trying after 3 failures
       return
     }
 
     try {
       // Convert http:// to ws:// and https:// to wss://
-      const wsUrl = url.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:')
+      let wsUrl = url
+      if (wsUrl.startsWith('http://')) {
+        wsUrl = wsUrl.replace('http://', 'ws://')
+      } else if (wsUrl.startsWith('https://')) {
+        wsUrl = wsUrl.replace('https://', 'wss://')
+      }
+      
+      // Don't try to connect if URL is still invalid after conversion
+      if (!wsUrl || wsUrl === 'ws://undefined/ws' || wsUrl === 'wss://undefined/ws') {
+        console.warn('WebSocket URL is invalid after conversion, skipping connection')
+        shouldReconnectRef.current = false
+        return
+      }
+      
+      isConnectingRef.current = true
+      failureCountRef.current = 0 // Reset failure count on new connection attempt
       const ws = new WebSocket(wsUrl)
       wsRef.current = ws
 
       ws.onopen = () => {
+        isConnectingRef.current = false
+        failureCountRef.current = 0 // Reset on successful connection
         setIsConnected(true)
-        onOpen?.()
+        onOpenRef.current?.()
         
         // Subscribe as admin if needed
         if (url.includes('admin')) {
@@ -68,49 +109,65 @@ export const useWebSocket = (options: UseWebSocketOptions = {}) => {
         try {
           const message: WebSocketMessage = JSON.parse(event.data)
           setLastMessage(message)
-          onMessage?.(message)
+          onMessageRef.current?.(message)
         } catch (error) {
           console.error('Error parsing WebSocket message:', error)
         }
       }
 
       ws.onclose = (event) => {
+        isConnectingRef.current = false
         setIsConnected(false)
-        onClose?.()
+        onCloseRef.current?.()
 
-        // Only reconnect if it wasn't a normal closure and we should reconnect
-        // Don't spam reconnect attempts if backend is not available
-        if (shouldReconnectRef.current && autoConnect && event.code !== 1000) {
-          // Limit reconnect attempts - exponential backoff
-          const attemptCount = (wsRef.current as any)?._reconnectAttempts || 0
-          const maxAttempts = 2 // Only try 2 times, then give up
-          
-          if (attemptCount < maxAttempts) {
-            (wsRef.current as any)._reconnectAttempts = attemptCount + 1
-            reconnectTimeoutRef.current = setTimeout(() => {
+        // Only reconnect if it wasn't a normal closure (code 1000) and we should reconnect
+        // Normal closure means the connection was closed intentionally
+        if (event.code === 1000) {
+          // Normal closure - don't reconnect
+          shouldReconnectRef.current = false
+          return
+        }
+
+        // Increment failure count
+        failureCountRef.current += 1
+
+        // Only reconnect if we haven't exceeded max attempts and should reconnect
+        if (shouldReconnectRef.current && autoConnect && failureCountRef.current < 3) {
+          // Wait before reconnecting
+          reconnectTimeoutRef.current = setTimeout(() => {
+            if (shouldReconnectRef.current && !isConnectingRef.current) {
               connect()
-            }, reconnectInterval * Math.pow(2, attemptCount)) // Exponential backoff
-          }
+            }
+          }, reconnectInterval)
+        } else {
+          // After max attempts, stop trying silently
+          shouldReconnectRef.current = false
         }
       }
 
       ws.onerror = (error) => {
+        isConnectingRef.current = false
         // Silently handle WebSocket errors - it's optional functionality
-        // Don't spam console with errors if backend doesn't support WebSocket
-        onError?.(error)
+        // The onclose handler will handle reconnection logic
+        onErrorRef.current?.(error)
       }
     } catch (error) {
+      isConnectingRef.current = false
+      failureCountRef.current += 1
       console.error('Error creating WebSocket connection:', error)
     }
-  }, [url, onMessage, onOpen, onClose, onError, reconnectInterval])
+  }, [url, reconnectInterval, autoConnect]) // Removed callbacks from dependencies - using refs instead
 
   const disconnect = useCallback(() => {
     shouldReconnectRef.current = false
+    isConnectingRef.current = false
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current)
+      reconnectTimeoutRef.current = null
     }
     if (wsRef.current) {
-      wsRef.current.close()
+      // Close with normal closure code to prevent reconnection
+      wsRef.current.close(1000, 'Intentional disconnect')
       wsRef.current = null
     }
     setIsConnected(false)
@@ -132,7 +189,8 @@ export const useWebSocket = (options: UseWebSocketOptions = {}) => {
     return () => {
       disconnect()
     }
-  }, [autoConnect, connect, disconnect])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoConnect]) // Only depend on autoConnect to prevent infinite loops
 
   return {
     isConnected,

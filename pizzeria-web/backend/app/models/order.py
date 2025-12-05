@@ -40,6 +40,7 @@ class OrderItem(Base):
     id = Column(Integer, primary_key=True, index=True)
     bestelling_id = Column(Integer, ForeignKey("bestellingen.id"), nullable=False)
     product_naam = Column(String, nullable=False)
+    product_id = Column(Integer, nullable=True)  # Product ID from menu for accurate category detection
     aantal = Column(Integer, nullable=False, default=1)
     prijs = Column(Float, nullable=False)
     opmerking = Column(Text)

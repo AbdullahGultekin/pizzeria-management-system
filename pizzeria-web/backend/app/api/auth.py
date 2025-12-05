@@ -13,6 +13,9 @@ from app.core.security import verify_password, get_password_hash, create_access_
 from app.core.dependencies import get_current_user
 from fastapi import Request
 import logging
+import json
+import os
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -20,27 +23,67 @@ router = APIRouter()
 limiter = Limiter(key_func=get_remote_address)
 
 
-# Temporary user store (replace with database later)
-# In production, this should be in a database
+def load_settings() -> dict:
+    """Load settings from settings.json file."""
+    # Try multiple paths to find settings.json
+    current_file = Path(__file__).resolve()
+    # From backend/app/api/auth.py -> go up 4 levels to project root
+    project_root = current_file.parent.parent.parent.parent
+    
+    possible_paths = [
+        project_root / "settings.json",  # Project root
+        project_root.parent / "settings.json",  # One level up
+        Path("settings.json"),  # Current working directory
+        Path("../settings.json"),  # Parent directory
+    ]
+    
+    for path in possible_paths:
+        try:
+            if not path.is_absolute():
+                path_resolved = path.resolve()
+            else:
+                path_resolved = path
+            
+            if path_resolved.exists() and path_resolved.is_file():
+                with open(path_resolved, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    logger.info(f"Successfully loaded settings from {path_resolved}")
+                    return data
+        except Exception as e:
+            logger.debug(f"Could not load settings from {path}: {e}")
+            continue
+    
+    logger.warning("settings.json not found, using default credentials")
+    return {}
+
+
 # Lazy initialization to avoid bcrypt issues during module import
 _USERS = None
 
 def get_users():
-    """Lazy initialization of users to avoid bcrypt issues."""
+    """Load users from settings.json or use defaults."""
     global _USERS
     if _USERS is None:
+        settings_data = load_settings()
+        admin_credentials = settings_data.get("admin_credentials", {})
+        
+        # Default credentials if not in settings
+        default_admin = admin_credentials.get("admin", {"username": "admin", "password": "admin123"})
+        default_kassa = admin_credentials.get("kassa", {"username": "kassa", "password": "kassa123"})
+        
         _USERS = {
-            "admin": {
-                "username": "admin",
-                "hashed_password": get_password_hash("admin123"),  # Change in production!
+            default_admin.get("username", "admin"): {
+                "username": default_admin.get("username", "admin"),
+                "hashed_password": get_password_hash(default_admin.get("password", "admin123")),
                 "role": "admin"
             },
-            "kassa": {
-                "username": "kassa",
-                "hashed_password": get_password_hash("kassa123"),  # Change in production!
+            default_kassa.get("username", "kassa"): {
+                "username": default_kassa.get("username", "kassa"),
+                "hashed_password": get_password_hash(default_kassa.get("password", "kassa123")),
                 "role": "kassa"
             }
         }
+        logger.info(f"Loaded users from settings: {list(_USERS.keys())}")
     return _USERS
 
 

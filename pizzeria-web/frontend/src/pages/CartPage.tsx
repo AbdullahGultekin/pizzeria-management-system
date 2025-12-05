@@ -20,6 +20,7 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import CreditCardIcon from '@mui/icons-material/CreditCard'
 import PublicHeader from '../components/PublicHeader'
 import { brandColors } from '../theme/colors'
+import { useTranslations } from '../hooks/useTranslations'
 
 interface CartItem {
   id: string
@@ -33,6 +34,7 @@ interface CartItem {
 
 const CartPage = () => {
   const navigate = useNavigate()
+  const { t, translateProduct, translateCategory } = useTranslations()
   const [cartItems, setCartItems] = useState<CartItem[]>([])
 
   useEffect(() => {
@@ -69,7 +71,7 @@ const CartPage = () => {
   }
 
   const clearCart = () => {
-    if (window.confirm('Weet je zeker dat je de winkelwagen wilt legen?')) {
+    if (window.confirm(t.confirmDelete)) {
       updateCart([])
     }
   }
@@ -121,10 +123,11 @@ const CartPage = () => {
     return details
   }
 
-  // Format category name - capitalize first letter and make it modern
+  // Format category name - translate and capitalize first letter
   const formatCategory = (cat: string) => {
     if (!cat) return ''
-    return cat
+    const translated = translateCategory(cat)
+    return translated
       .split('-')
       .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
       .join(' ')
@@ -159,13 +162,13 @@ const CartPage = () => {
               mb: 3,
             }}
           >
-            Jouw Winkelwagen
+            {t.cart}
           </Typography>
 
           {cartItems.length === 0 ? (
             <Box sx={{ textAlign: 'center', py: 8 }}>
               <Typography variant="h6" sx={{ color: '#888', fontSize: '1.15em', mb: 3 }}>
-                Je winkelwagen is leeg.
+                {t.cartEmpty}
               </Typography>
               <Button
                 variant="contained"
@@ -181,7 +184,7 @@ const CartPage = () => {
                   '&:hover': { bgcolor: brandColors.primaryDark },
                 }}
               >
-                Terug naar menu
+                {t.back} {t.menu}
               </Button>
             </Box>
           ) : (
@@ -191,22 +194,22 @@ const CartPage = () => {
                   <TableHead>
                     <TableRow sx={{ bgcolor: '#fff7f6' }}>
                       <TableCell sx={{ color: brandColors.primary, fontWeight: 600, fontSize: '1.09em', py: 2 }}>
-                        Product
+                        {t.items}
                       </TableCell>
                       <TableCell sx={{ color: brandColors.primary, fontWeight: 600, fontSize: '1.09em', py: 2 }}>
-                        Categorie
+                        {t.language === 'nl' ? 'Categorie' : t.language === 'fr' ? 'Catégorie' : 'Category'}
                       </TableCell>
                       <TableCell sx={{ color: brandColors.primary, fontWeight: 600, fontSize: '1.09em', py: 2 }}>
-                        Details
+                        {t.language === 'nl' ? 'Details' : t.language === 'fr' ? 'Détails' : 'Details'}
                       </TableCell>
                       <TableCell sx={{ color: brandColors.primary, fontWeight: 600, fontSize: '1.09em', py: 2 }}>
-                        Aantal
+                        {t.quantity}
                       </TableCell>
                       <TableCell sx={{ color: brandColors.primary, fontWeight: 600, fontSize: '1.09em', py: 2 }}>
-                        Prijs
+                        {t.price}
                       </TableCell>
                       <TableCell sx={{ color: brandColors.primary, fontWeight: 600, fontSize: '1.09em', py: 2 }}>
-                        Actie
+                        {t.language === 'nl' ? 'Actie' : t.language === 'fr' ? 'Action' : 'Action'}
                       </TableCell>
                     </TableRow>
                   </TableHead>
@@ -217,7 +220,7 @@ const CartPage = () => {
                         <TableRow key={item.id} sx={{ '&:last-child td': { borderBottom: 'none' } }}>
                           <TableCell sx={{ py: 2, fontSize: '1em', verticalAlign: 'top' }}>
                             <Typography variant="body1" sx={{ fontWeight: 700, mb: 0.5, fontSize: '1.05em', color: '#333' }}>
-                              {item.naam || 'Onbekend product'}
+                              {translateProduct(item.naam) || (t.language === 'nl' ? 'Onbekend product' : t.language === 'fr' ? 'Produit inconnu' : 'Unknown product')}
                             </Typography>
                             <Typography variant="caption" sx={{ 
                               fontSize: '0.85rem', 
@@ -226,7 +229,7 @@ const CartPage = () => {
                               color: brandColors.primary,
                               mb: 0.5,
                             }}>
-                              Categorie: {formatCategory(item.categorie)}
+                              {t.language === 'nl' ? 'Categorie' : t.language === 'fr' ? 'Catégorie' : 'Category'}: {translateCategory(item.categorie)}
                             </Typography>
                           </TableCell>
                           <TableCell sx={{ py: 2, fontSize: '1em', verticalAlign: 'top' }}>
@@ -295,7 +298,7 @@ const CartPage = () => {
                                 borderRadius: '50%',
                                 '&:hover': { bgcolor: '#fff0ef' },
                               }}
-                              title="Verwijderen"
+                              title={t.removeFromCart}
                             >
                               <DeleteIcon />
                             </IconButton>
@@ -307,7 +310,7 @@ const CartPage = () => {
                   <TableFooter>
                     <TableRow>
                       <TableCell colSpan={4} align="right" sx={{ py: 2, fontWeight: 600 }}>
-                        <Typography variant="h6">Totaal:</Typography>
+                        <Typography variant="h6">{t.total}:</Typography>
                       </TableCell>
                       <TableCell colSpan={2} sx={{ py: 2, fontWeight: 700 }}>
                         <Typography variant="h6" sx={{ color: brandColors.primary }}>
@@ -337,7 +340,7 @@ const CartPage = () => {
                     },
                   }}
                 >
-                  Verder winkelen
+                  {t.continueShopping}
                 </Button>
                 <Button
                   variant="contained"
@@ -353,7 +356,7 @@ const CartPage = () => {
                     '&:hover': { bgcolor: brandColors.primaryDark },
                   }}
                 >
-                  Afrekenen
+                  {t.proceedToCheckout}
                 </Button>
                 <Button
                   variant="outlined"
@@ -373,7 +376,7 @@ const CartPage = () => {
                     },
                   }}
                 >
-                  Alles wissen
+                  {t.clearCart}
                 </Button>
               </Box>
             </>

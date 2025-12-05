@@ -55,11 +55,20 @@ class EmailVerificationService:
         Returns:
             Customer if token is valid, None otherwise
         """
-        customer = db.query(Customer).filter(Customer.verification_token == token).first()
+        if not token or not token.strip():
+            logger.warning("Empty token provided to verify_token")
+            return None
+        
+        # Clean the token (remove whitespace)
+        clean_token = token.strip()
+        
+        customer = db.query(Customer).filter(Customer.verification_token == clean_token).first()
         
         if not customer:
-            logger.warning(f"Invalid verification token attempted")
+            logger.warning(f"Invalid verification token attempted: {clean_token[:20]}...")
             return None
+        
+        logger.info(f"Found customer {customer.id} for token, checking expiration...")
         
         # Check if token expired
         if customer.verification_token_expires:
@@ -74,6 +83,18 @@ class EmailVerificationService:
                     return None
             except (ValueError, TypeError) as e:
                 logger.error(f"Error parsing token expiration: {e}")
+                # If we can't parse the expiration, consider token invalid
+                customer.verification_token = None
+                customer.verification_token_expires = None
+                db.commit()
+                return None
+        else:
+            # If no expiration date is set, consider token invalid for security
+            logger.warning(f"Verification token for customer {customer.id} has no expiration date")
+            customer.verification_token = None
+            customer.verification_token_expires = None
+            db.commit()
+            return None
         
         # Mark email as verified
         customer.email_verified = 1

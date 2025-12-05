@@ -10,12 +10,20 @@ from app.utils.phone_validator import validate_phone_number
 class CustomerBase(BaseModel):
     """Base customer schema."""
     telefoon: str = Field(..., min_length=10, max_length=15)
+    email: Optional[EmailStr] = Field(None, description="E-mailadres (optioneel)")
     naam: Optional[str] = Field(None, max_length=100)
     straat: Optional[str] = Field(None, max_length=200)
     huisnummer: Optional[str] = Field(None, max_length=20)
     plaats: Optional[str] = Field(None, max_length=100)
     notities: Optional[str] = None
     voorkeur_levering: Optional[str] = None
+    
+    @validator('email')
+    def validate_email(cls, v):
+        """Normalize email if provided."""
+        if v:
+            return v.lower().strip()
+        return v
     
     @validator('telefoon')
     def validate_phone(cls, v):
@@ -40,18 +48,26 @@ class CustomerCreate(CustomerBase):
 
 class CustomerUpdate(BaseModel):
     """Schema for updating a customer."""
+    email: Optional[EmailStr] = Field(None, description="E-mailadres (optioneel)")
     naam: Optional[str] = Field(None, max_length=100)
     straat: Optional[str] = Field(None, max_length=200)
     huisnummer: Optional[str] = Field(None, max_length=20)
     plaats: Optional[str] = Field(None, max_length=100)
     notities: Optional[str] = None
     voorkeur_levering: Optional[str] = None
+    
+    @validator('email')
+    def validate_email(cls, v):
+        """Normalize email if provided."""
+        if v:
+            return v.lower().strip()
+        return v
 
 
 class CustomerRegister(BaseModel):
     """Schema for customer registration."""
     email: EmailStr = Field(..., description="E-mailadres (wordt gebruikt als gebruikersnaam)")
-    password: str = Field(..., min_length=6, max_length=100, description="Wachtwoord (minimaal 6 tekens)")
+    password: str = Field(..., min_length=8, max_length=100, description="Wachtwoord (minimaal 8 tekens, hoofdletters, cijfers en speciale tekens)")
     telefoon: str = Field(..., description="Telefoonnummer (alle EU landen)")
     naam: str = Field(..., min_length=2, max_length=100)
     straat: Optional[str] = Field(None, max_length=200)
@@ -70,6 +86,15 @@ class CustomerRegister(BaseModel):
         if '@' not in email_lower or '.' not in email_lower.split('@')[1]:
             raise ValueError('Ongeldig e-mailadres formaat')
         return email_lower
+    
+    @validator('password')
+    def validate_password(cls, v):
+        """Validate password strength."""
+        from app.utils.password_validator import validate_password_strength
+        is_valid, error_message = validate_password_strength(v)
+        if not is_valid:
+            raise ValueError(error_message)
+        return v
     
     @validator('telefoon')
     def validate_phone(cls, v):
@@ -117,5 +142,30 @@ class CustomerRegisterResponse(BaseModel):
     message: str
     email: str
     requires_verification: bool = True
+
+
+class ForgotPasswordRequest(BaseModel):
+    """Schema for forgot password request."""
+    email: EmailStr = Field(..., description="E-mailadres van het account")
+    
+    @validator('email')
+    def validate_email(cls, v):
+        """Normalize email."""
+        return v.lower().strip()
+
+
+class ResetPasswordRequest(BaseModel):
+    """Schema for password reset request."""
+    token: str = Field(..., description="Password reset token")
+    new_password: str = Field(..., min_length=8, max_length=100, description="Nieuw wachtwoord")
+    
+    @validator('new_password')
+    def validate_password(cls, v):
+        """Validate password strength."""
+        from app.utils.password_validator import validate_password_strength
+        is_valid, error_message = validate_password_strength(v)
+        if not is_valid:
+            raise ValueError(error_message)
+        return v
 
 

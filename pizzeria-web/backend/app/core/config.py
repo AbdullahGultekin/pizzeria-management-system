@@ -66,6 +66,7 @@ class Settings(BaseSettings):
     
     # Email Verification
     EMAIL_VERIFICATION_REQUIRED: bool = os.getenv("EMAIL_VERIFICATION_REQUIRED", "true").lower() == "true"
+    FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:3000")  # Frontend URL for email links
 
     # Payments - Stripe
     STRIPE_SECRET_KEY: Optional[str] = os.getenv("STRIPE_SECRET_KEY")
@@ -73,7 +74,13 @@ class Settings(BaseSettings):
     STRIPE_PUBLISHABLE_KEY: Optional[str] = os.getenv("STRIPE_PUBLISHABLE_KEY")
     
     class Config:
-        env_file = ".env"
+        # Find .env file in backend directory (where this config file is)
+        import os
+        from pathlib import Path
+        _backend_dir = Path(__file__).parent.parent.parent  # pizzeria-web/backend
+        _env_path = _backend_dir / ".env"
+        env_file = str(_env_path) if _env_path.exists() else ".env"
+        env_file_encoding = "utf-8"
         case_sensitive = True
 
 

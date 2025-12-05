@@ -543,6 +543,7 @@ body {
     }
 }
 
+/* Mobile optimizations for all devices including Chinese phones */
 @media (max-width: 768px) {
     .navbar-container {
         flex-direction: column;
@@ -576,6 +577,118 @@ body {
 
     .content {
         padding: 10px;
+    }
+}
+
+/* Extra small devices (phones, 320px and up) - Chinese phones often start here */
+@media (max-width: 480px) {
+    /* Ensure text is readable on small screens */
+    body {
+        font-size: 14px;
+        -webkit-text-size-adjust: 100%;
+        -ms-text-size-adjust: 100%;
+        text-size-adjust: 100%;
+    }
+    
+    /* Prevent horizontal scrolling */
+    * {
+        max-width: 100%;
+        box-sizing: border-box;
+    }
+    
+    /* Touch-friendly buttons */
+    button, .MuiButton-root {
+        min-height: 44px;
+        min-width: 44px;
+        padding: 12px 16px;
+    }
+    
+    /* Better spacing on small screens */
+    .MuiContainer-root {
+        padding-left: 12px;
+        padding-right: 12px;
+    }
+    
+    /* Ensure inputs are touch-friendly */
+    input, textarea, select {
+        font-size: 16px !important; /* Prevents zoom on iOS */
+        min-height: 44px;
+    }
+}
+
+/* Very small devices (some Chinese phones, 320px and below) */
+@media (max-width: 360px) {
+    body {
+        font-size: 13px;
+    }
+    
+    h1 {
+        font-size: 1.5rem;
+    }
+    
+    h2 {
+        font-size: 1.25rem;
+    }
+    
+    h3 {
+        font-size: 1.1rem;
+    }
+}
+
+/* Landscape orientation on mobile */
+@media (max-width: 768px) and (orientation: landscape) {
+    .navbar-container {
+        flex-direction: row;
+        align-items: center;
+    }
+}
+
+/* High DPI displays (Retina, etc.) */
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+    /* Ensure images are crisp */
+    img {
+        image-rendering: -webkit-optimize-contrast;
+        image-rendering: crisp-edges;
+    }
+}
+
+/* Prevent text selection issues on touch devices */
+@media (hover: none) and (pointer: coarse) {
+    /* Touch device optimizations */
+    * {
+        -webkit-tap-highlight-color: rgba(173, 41, 41, 0.2);
+    }
+    
+    /* Better touch targets */
+    a, button {
+        min-height: 44px;
+        min-width: 44px;
+    }
+}
+
+/* Chinese browser specific fixes */
+@supports (-webkit-appearance: none) {
+    /* WebKit browsers (Safari, Chrome, Chinese browsers) */
+    input[type="text"],
+    input[type="email"],
+    input[type="tel"],
+    input[type="number"],
+    textarea,
+    select {
+        -webkit-appearance: none;
+        border-radius: 4px;
+    }
+}
+
+/* Prevent zoom on input focus (iOS Safari) */
+@media screen and (max-width: 768px) {
+    input[type="text"],
+    input[type="email"],
+    input[type="tel"],
+    input[type="number"],
+    textarea,
+    select {
+        font-size: 16px !important;
     }
 }
 

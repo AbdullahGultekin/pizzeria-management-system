@@ -160,12 +160,12 @@ class CourierManager:
         # Left panel - Table (50% of width)
         left_panel = tk.Frame(content_paned, bg="white")
         # Use same minsize and width for 50/50 split
-        content_paned.add(left_panel, minsize=500, width=700)
+        content_paned.add(left_panel, minsize=700, width=700)
         
         # Right panel - Settlement frame (50% of width)
         right_panel = tk.Frame(content_paned, bg="white")
         # Use same minsize and width for 50/50 split
-        content_paned.add(right_panel, minsize=500, width=700)
+        content_paned.add(right_panel, minsize=700, width=700)
         
         # Initialize UI helper
         self.ui = CourierUI(self.parent, self.courier_names)
