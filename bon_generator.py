@@ -183,11 +183,9 @@ def generate_bon_text(
             return (3, cat)
         return (4, cat)
 
-    bestelregels_sorted = sorted(bestelregels, key=group_key)
-
-    # NIEUW: Groepeer dezelfde producten (zelfs als apart gekozen) samen
+    # NIEUW: Groepeer dezelfde producten (zelfs als apart gekozen) samen VOOR sorteren
     merged_rules = {}
-    for item in bestelregels_sorted:
+    for item in bestelregels:
         # Maak een unieke sleutel voor elk product met dezelfde extras
         extras_key = json.dumps(item.get('extras', {}), sort_keys=True)
         product_key = (item['categorie'], item['product'], extras_key, item.get('opmerking', ''))
@@ -205,9 +203,11 @@ def generate_bon_text(
         # Tel het aantal bij elkaar op
         merged_rules[product_key]['aantal'] += item['aantal']
 
-    # Converteer terug naar lijst met behoud van volgorde
+    # Converteer terug naar lijst en sorteer daarna
     bestelregels_merged = list(merged_rules.values())
+    bestelregels_sorted = sorted(bestelregels_merged, key=group_key)
 
+    # Use merged and sorted rules (to show combined quantities in correct order)
     for item in bestelregels_sorted:
         name_max = BON_WIDTH - 4 - 12
         aantal = item['aantal']

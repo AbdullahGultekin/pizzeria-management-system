@@ -2189,10 +2189,17 @@ class OnlineBestellingenManager:
             from utils.print_utils import _save_and_print_from_preview
             
             # Convert order to bon format
-            # Check if order is pickup (afhaal) - can be boolean or integer (0/1)
+            # Check if order is pickup (afhaal) - can be boolean, integer (0/1), or detected from opmerking
             is_afhaal = order.get('afhaal', False)
             if isinstance(is_afhaal, int):
                 is_afhaal = bool(is_afhaal)
+            
+            # Also check opmerking for [AFHAAL], [À EMPORTER], or [PICKUP] markers
+            opmerking = order.get('opmerking', '')
+            if opmerking and ('[AFHAAL]' in opmerking.upper() or '[À EMPORTER]' in opmerking.upper() or '[PICKUP]' in opmerking.upper()):
+                is_afhaal = True
+                # Remove the marker from opmerking for display
+                opmerking = opmerking.replace('[AFHAAL]', '').replace('[À EMPORTER]', '').replace('[PICKUP]', '').strip()
             
             klant_data = {
                 "naam": order.get('klant_naam', 'Onbekend'),
@@ -2206,8 +2213,9 @@ class OnlineBestellingenManager:
                 "korting_percentage": 0.0
             }
             
-            # Parse address if available
-            if order.get('klant_adres'):
+            # Parse address if available and NOT a pickup order
+            # For pickup orders, address is saved but not printed
+            if order.get('klant_adres') and not is_afhaal:
                 # Try to parse address (format: "Straat Huisnummer, Postcode Gemeente")
                 parts = order.get('klant_adres', '').split(',')
                 if len(parts) >= 2:

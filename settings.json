@@ -105,5 +105,52 @@
     "Meerdonk": 25.0,
     "Sint-Gillis-Waas": 25.0,
     "De Klinge": 35.0
+  },
+  "opening_hours": {
+    "monday": {
+      "open": false,
+      "open_time": "17:00",
+      "close_time": "20:30"
+    },
+    "tuesday": {
+      "open": true,
+      "open_time": "17:00",
+      "close_time": "20:30"
+    },
+    "wednesday": {
+      "open": true,
+      "open_time": "17:00",
+      "close_time": "20:30"
+    },
+    "thursday": {
+      "open": true,
+      "open_time": "17:00",
+      "close_time": "20:30"
+    },
+    "friday": {
+      "open": true,
+      "open_time": "17:00",
+      "close_time": "20:30"
+    },
+    "saturday": {
+      "open": true,
+      "open_time": "17:00",
+      "close_time": "20:30"
+    },
+    "sunday": {
+      "open": true,
+      "open_time": "17:00",
+      "close_time": "20:30"
+    }
+  },
+  "admin_credentials": {
+    "admin": {
+      "username": "Napoli",
+      "password": "PitaPizzaNapoli"
+    },
+    "kassa": {
+      "username": "kassa",
+      "password": "kassa123"
+    }
   }
 }

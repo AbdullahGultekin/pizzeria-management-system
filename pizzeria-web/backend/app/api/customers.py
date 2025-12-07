@@ -47,17 +47,37 @@ async def create_customer_public(
     # Check if customer with phone already exists
     existing = db.query(Customer).filter(Customer.telefoon == customer.telefoon).first()
     if existing:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Klant met dit telefoonnummer bestaat al"
-        )
+        # If customer exists, update their address instead of creating new one
+        logger.info(f"Customer with phone {customer.telefoon} already exists (id: {existing.id}), updating address")
+        update_data = customer.dict(exclude_unset=True)
+        address_changed = False
+        for field, value in update_data.items():
+            if field in ['straat', 'huisnummer', 'plaats'] and value:
+                old_value = getattr(existing, field, None)
+                if old_value != value:
+                    setattr(existing, field, value)
+                    address_changed = True
+            elif field not in ['telefoon']:  # Don't update phone number
+                setattr(existing, field, value)
+        
+        if address_changed:
+            old_address = f"{existing.straat} {existing.huisnummer}, {existing.plaats}"
+            logger.info(f"Updated existing customer address: {existing.id} - New: {old_address}")
+        
+        db.commit()
+        db.refresh(existing)
+        logger.info(f"Customer updated instead of created (public): {existing.id} - {existing.telefoon}")
+        return existing
     
-    db_customer = Customer(**customer.dict())
+    # Create new customer
+    customer_data = customer.dict()
+    address_info = f"{customer_data.get('straat', '')} {customer_data.get('huisnummer', '')}, {customer_data.get('plaats', '')}"
+    db_customer = Customer(**customer_data)
     db.add(db_customer)
     db.commit()
     db.refresh(db_customer)
     
-    logger.info(f"Customer created (public): {db_customer.id} - {db_customer.telefoon}")
+    logger.info(f"Customer created (public): {db_customer.id} - {db_customer.telefoon} - Address: {address_info}")
     return db_customer
 
 
@@ -291,6 +311,7 @@ async def update_customer_public(
     """
     Update a customer (public endpoint, no authentication required).
     Used during checkout.
+    Always updates address fields if provided, even if they haven't changed.
     """
     customer = db.query(Customer).filter(Customer.id == customer_id).first()
     if not customer:
@@ -299,14 +320,34 @@ async def update_customer_public(
             detail="Klant niet gevonden"
         )
     
+    # Get update data - include all fields that are provided (even if None)
     update_data = customer_update.dict(exclude_unset=True)
+    
+    # Log current address before update
+    old_address = f"{customer.straat} {customer.huisnummer}, {customer.plaats}"
+    
+    # Update all provided fields
+    address_changed = False
     for field, value in update_data.items():
-        setattr(customer, field, value)
+        old_value = getattr(customer, field, None)
+        # Always update if value is provided (even if it's the same)
+        # This ensures address updates are always saved
+        if value is not None:
+            setattr(customer, field, value)
+            if field in ['straat', 'huisnummer', 'plaats'] and old_value != value:
+                address_changed = True
+    
+    # Log address changes
+    new_address = f"{customer.straat} {customer.huisnummer}, {customer.plaats}"
+    if address_changed or old_address != new_address:
+        logger.info(f"Customer address updated (public): {customer_id} - Old: {old_address} -> New: {new_address}")
+    else:
+        logger.info(f"Customer updated (public): {customer_id} - Address unchanged: {new_address}")
     
     db.commit()
     db.refresh(customer)
     
-    logger.info(f"Customer updated (public): {customer_id}")
+    logger.info(f"Customer update completed (public): {customer_id} - Name: {customer.naam}, Phone: {customer.telefoon}")
     return customer
 
 

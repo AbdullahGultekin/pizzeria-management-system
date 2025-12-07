@@ -35,8 +35,10 @@ class CustomerBase(BaseModel):
     
     @validator('naam', 'straat', 'plaats')
     def sanitize_input(cls, v):
-        """Sanitize input to prevent XSS."""
+        """Sanitize input to prevent XSS. Allows all characters including numbers."""
         if v:
+            # Only escape HTML to prevent XSS, but allow all characters including numbers
+            # This allows names like "3 de bel"
             return html.escape(v.strip())
         return v
 

@@ -41,11 +41,14 @@ class Settings(BaseSettings):
         return v
     
     # Database
-    # Use database in backend directory (where import_menu.py creates it)
-    _db_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "pizzeria.db")
+    # Use the same database as the Tkinter kassa app (in project root)
+    # This ensures web orders and kassa orders share the same customer database
+    import pathlib
+    _project_root = pathlib.Path(__file__).parent.parent.parent.parent  # Go up from app/core/config.py to project root
+    _db_path = _project_root / "pizzeria.db"
     DATABASE_URL: str = os.getenv(
         "DATABASE_URL",
-        f"sqlite:///{_db_path}"  # Point to backend directory
+        f"sqlite:///{_db_path}"  # Point to project root to share with Tkinter app
     )
     
     # Rate Limiting

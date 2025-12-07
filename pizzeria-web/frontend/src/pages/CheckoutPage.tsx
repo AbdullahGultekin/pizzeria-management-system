@@ -22,6 +22,9 @@ import {
   InputLabel,
   AppBar,
   Toolbar,
+  Radio,
+  RadioGroup,
+  FormControlLabel,
 } from '@mui/material'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import CheckIcon from '@mui/icons-material/Check'
@@ -53,6 +56,7 @@ interface CustomerData {
   postcode_gemeente: string  // Combined field: "9120 Vrasene"
   betaalmethode?: string
   opmerking?: string
+  is_afhaal?: boolean  // true = pickup, false = delivery
 }
 
 
@@ -71,6 +75,7 @@ const CheckoutPage = () => {
     postcode_gemeente: '',
     betaalmethode: '',
     opmerking: '',
+    is_afhaal: false,  // Default to delivery
   })
   const [straatnamen, setStraatnamen] = useState<string[]>([])
   const [postcodes, setPostcodes] = useState<string[]>([])  // List of "9120 Vrasene" format
@@ -258,10 +263,12 @@ const CheckoutPage = () => {
 
   const validateForm = () => {
     const newErrors: Partial<CustomerData> = {}
+    const isAfhaal = customerData.is_afhaal || false
     
     if (!customerData.naam.trim()) {
       newErrors.naam = 'Naam is verplicht'
     }
+    // Naam mag alle tekens bevatten inclusief cijfers (bijv. "3 de bel")
     
     if (!customerData.telefoon.trim()) {
       newErrors.telefoon = 'Telefoonnummer is verplicht'
@@ -278,37 +285,41 @@ const CheckoutPage = () => {
       newErrors.email = 'Ongeldig e-mailadres'
     }
     
-    if (!customerData.straat.trim()) {
-      newErrors.straat = 'Straat is verplicht'
-    }
-    
-    if (!customerData.huisnummer.trim()) {
-      newErrors.huisnummer = 'Huisnummer is verplicht'
-    }
-    
-    if (!customerData.postcode_gemeente.trim()) {
-      newErrors.postcode_gemeente = 'Postcode en gemeente zijn verplicht'
-    } else {
-      // Check minimum amount
-      const parts = customerData.postcode_gemeente.trim().split(' ', 2)
-      const gemeente = parts.length > 1 ? parts.slice(1).join(' ') : ''
+    // Address fields are only required for delivery (not for pickup)
+    if (!isAfhaal) {
+      if (!customerData.straat.trim()) {
+        newErrors.straat = 'Straat is verplicht'
+      }
       
-      if (gemeente && deliveryZones && Object.keys(deliveryZones).length > 0) {
-        const matchingGemeente = Object.keys(deliveryZones).find(
-          zone => zone.toLowerCase() === gemeente.toLowerCase()
-        )
+      if (!customerData.huisnummer.trim()) {
+        newErrors.huisnummer = 'Huisnummer is verplicht'
+      }
+      
+      if (!customerData.postcode_gemeente.trim()) {
+        newErrors.postcode_gemeente = 'Postcode en gemeente zijn verplicht'
+      } else {
+        // Check minimum amount for delivery
+        const parts = customerData.postcode_gemeente.trim().split(' ', 2)
+        const gemeente = parts.length > 1 ? parts.slice(1).join(' ') : ''
         
-        if (matchingGemeente) {
-          const minAmount = deliveryZones[matchingGemeente]
-          const total = getTotal()
+        if (gemeente && deliveryZones && Object.keys(deliveryZones).length > 0) {
+          const matchingGemeente = Object.keys(deliveryZones).find(
+            zone => zone.toLowerCase() === gemeente.toLowerCase()
+          )
           
-          if (total < minAmount) {
-            const difference = (minAmount - total).toFixed(2)
-            newErrors.postcode_gemeente = `Minimum leveringsbedrag voor ${gemeente} is €${minAmount.toFixed(2)}. Uw bestelling is €${difference} te laag.`
+          if (matchingGemeente) {
+            const minAmount = deliveryZones[matchingGemeente]
+            const total = getTotal()
+            
+            if (total < minAmount) {
+              const difference = (minAmount - total).toFixed(2)
+              newErrors.postcode_gemeente = `Minimum leveringsbedrag voor ${gemeente} is €${minAmount.toFixed(2)}. Uw bestelling is €${difference} te laag.`
+            }
           }
         }
       }
     }
+    // For pickup, address is optional - if provided, it will be saved but not printed
     
     if (!customerData.betaalmethode) {
       newErrors.betaalmethode = 'Betaalmethode is verplicht'
@@ -332,46 +343,47 @@ const CheckoutPage = () => {
     try {
       // Find or create customer
       let customer
+      const isAfhaal = customerData.is_afhaal || false
+      
+      // Prepare customer data
+      // For pickup: only save name and phone (address is optional)
+      // For delivery: save all fields including address
+      // If pickup customer provides address later, it will be saved but not printed
+      const customerUpdateData = {
+        naam: customerData.naam || '',
+        telefoon: customerData.telefoon,
+        email: customerData.email || null,
+        // For pickup, address is optional - if provided, save it for future use
+        // For delivery, address is required and will be saved
+        straat: customerData.straat || '',
+        huisnummer: customerData.huisnummer || '',
+        plaats: customerData.postcode_gemeente || '', // plaats contains "postcode gemeente" (e.g., "9120 Vrasene")
+      }
+      
       try {
         const existingCustomer = await customerAPI.getByPhone(customerData.telefoon)
         // Check if customer exists and has valid id
         if (existingCustomer && typeof existingCustomer === 'object' && 'id' in existingCustomer && existingCustomer.id) {
-          // Update customer if exists - plaats contains "postcode gemeente" (e.g., "9120 Vrasene")
-          customer = await customerAPI.update(existingCustomer.id, {
-            naam: customerData.naam,
-            telefoon: customerData.telefoon,
-            email: customerData.email, // FIX: Include email address
-            straat: customerData.straat,
-            huisnummer: customerData.huisnummer,
-            plaats: customerData.postcode_gemeente, // plaats contains "postcode gemeente"
-          })
+          // Always update customer if exists - this ensures address changes are saved
+          console.log('Updating existing customer:', existingCustomer.id, 'with address:', customerUpdateData.plaats)
+          customer = await customerAPI.update(existingCustomer.id, customerUpdateData)
+          console.log('Customer updated successfully:', customer.id, 'New address:', customer.plaats)
         } else {
           // Customer doesn't exist or invalid response, create new one
-          // plaats contains "postcode gemeente" (e.g., "9120 Vrasene")
-          customer = await customerAPI.create({
-            naam: customerData.naam,
-            telefoon: customerData.telefoon,
-            email: customerData.email, // FIX: Include email address
-            straat: customerData.straat,
-            huisnummer: customerData.huisnummer,
-            plaats: customerData.postcode_gemeente, // plaats contains "postcode gemeente"
-          })
+          console.log('Creating new customer with address:', customerUpdateData.plaats)
+          customer = await customerAPI.create(customerUpdateData)
+          console.log('Customer created successfully:', customer.id)
         }
       } catch (err: any) {
         // If 404 or 400, customer doesn't exist - create new one
         if (err.response?.status === 404 || err.response?.status === 400) {
           // Customer doesn't exist - create new one
-          // plaats contains "postcode gemeente" (e.g., "9120 Vrasene")
-          customer = await customerAPI.create({
-            naam: customerData.naam,
-            telefoon: customerData.telefoon,
-            email: customerData.email, // FIX: Include email address
-            straat: customerData.straat,
-            huisnummer: customerData.huisnummer,
-            plaats: customerData.postcode_gemeente, // plaats contains "postcode gemeente"
-          })
+          console.log('Customer not found, creating new one with address:', customerUpdateData.plaats)
+          customer = await customerAPI.create(customerUpdateData)
+          console.log('Customer created successfully:', customer.id)
         } else {
           // Re-throw other errors
+          console.error('Error finding/creating customer:', err)
           throw err
         }
       }
@@ -422,10 +434,17 @@ const CheckoutPage = () => {
       const totaal = validCartItems.reduce((sum, item) => sum + item.prijs * item.aantal, 0)
       console.log('Calculated total:', totaal)
 
+      // Add afhaal info to order opmerking if it's a pickup order
+      let orderOpmerking = customerData.opmerking || null
+      if (isAfhaal) {
+        const afhaalNote = t.language === 'nl' ? '[AFHAAL]' : t.language === 'fr' ? '[À EMPORTER]' : '[PICKUP]'
+        orderOpmerking = orderOpmerking ? `${afhaalNote} ${orderOpmerking}` : afhaalNote
+      }
+
       const order = await orderAPI.createPublic({
         klant_id: customer.id,
         items: orderItems,
-        opmerking: customerData.opmerking || null,
+        opmerking: orderOpmerking,
         totaal: totaal,
         betaalmethode: customerData.betaalmethode || 'cash',
       })
@@ -904,7 +923,43 @@ const CheckoutPage = () => {
 
           <form onSubmit={handleSubmit}>
             <Typography variant="h6" sx={{ color: brandColors.primary, fontWeight: 600, mb: 2, mt: 4 }}>
-              {t.deliveryAddress}
+              {t.language === 'nl' ? 'Besteltype' : t.language === 'fr' ? 'Type de commande' : 'Order Type'}
+            </Typography>
+
+            <Grid container spacing={2} sx={{ mb: 3 }}>
+              <Grid item xs={12}>
+                <FormControl component="fieldset">
+                  <RadioGroup
+                    row
+                    value={customerData.is_afhaal ? 'afhaal' : 'bezorging'}
+                    onChange={(e) => {
+                      const isAfhaal = e.target.value === 'afhaal'
+                      setCustomerData({ ...customerData, is_afhaal: isAfhaal })
+                      // Clear address errors when switching to pickup
+                      if (isAfhaal) {
+                        setErrors({ ...errors, straat: undefined, huisnummer: undefined, postcode_gemeente: undefined })
+                      }
+                    }}
+                  >
+                    <FormControlLabel
+                      value="bezorging"
+                      control={<Radio />}
+                      label={t.language === 'nl' ? 'Bezorging' : t.language === 'fr' ? 'Livraison' : 'Delivery'}
+                    />
+                    <FormControlLabel
+                      value="afhaal"
+                      control={<Radio />}
+                      label={t.language === 'nl' ? 'Afhaal' : t.language === 'fr' ? 'À emporter' : 'Pickup'}
+                    />
+                  </RadioGroup>
+                </FormControl>
+              </Grid>
+            </Grid>
+
+            <Typography variant="h6" sx={{ color: brandColors.primary, fontWeight: 600, mb: 2 }}>
+              {customerData.is_afhaal 
+                ? (t.language === 'nl' ? 'Klantgegevens' : t.language === 'fr' ? 'Informations client' : 'Customer Information')
+                : t.deliveryAddress}
             </Typography>
 
             <Grid container spacing={2} sx={{ mb: 2 }}>
@@ -944,58 +999,73 @@ const CheckoutPage = () => {
                   required
                 />
               </Grid>
-              <Grid item xs={12} sm={8}>
-                <TextField
-                  fullWidth
-                  label={`${t.street} *`}
-                  value={customerData.straat}
-                  onChange={handleChange('straat')}
-                  error={!!errors.straat}
-                  helperText={errors.straat || 'Kies een straat uit de lijst en vul je huisnummer in'}
-                  required
-                  inputProps={{
-                    list: 'straatnamen-list',
-                  }}
-                />
-                       <datalist id="straatnamen-list">
-                         {straatnamen.map((straat, index) => (
-                           <option key={`${straat}-${index}`} value={straat} />
-                         ))}
-                       </datalist>
-              </Grid>
-              <Grid item xs={12} sm={4}>
-                <TextField
-                  fullWidth
-                  label={`${t.houseNumber} *`}
-                  value={customerData.huisnummer}
-                  onChange={handleChange('huisnummer')}
-                  error={!!errors.huisnummer}
-                  helperText={errors.huisnummer}
-                  required
-                />
-              </Grid>
-              <Grid item xs={12}>
-                <FormControl fullWidth required error={!!errors.postcode_gemeente}>
-                  <InputLabel>{t.postcode} {t.city} *</InputLabel>
-                  <Select
-                    value={customerData.postcode_gemeente}
-                    onChange={(e) => handleChange('postcode_gemeente')({ target: { value: e.target.value } })}
-                    label={`${t.postcode} ${t.city} *`}
-                  >
-                    <MenuItem value="">{t.language === 'nl' ? 'Selecteer postcode en gemeente' : t.language === 'fr' ? 'Sélectionnez code postal et ville' : 'Select postcode and city'}</MenuItem>
-                    {Array.isArray(postcodes) && postcodes.map((pc) => (
-                      <MenuItem key={pc} value={pc}>
-                        {pc}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                  {errors.postcode_gemeente && (
-                    <Typography variant="caption" color="error" sx={{ mt: 0.5, ml: 1.75 }}>
-                      {errors.postcode_gemeente}
-                    </Typography>
-                  )}
-                </FormControl>
-              </Grid>
+              {!customerData.is_afhaal && (
+                <>
+                  <Grid item xs={12} sm={8}>
+                    <TextField
+                      fullWidth
+                      label={`${t.street} *`}
+                      value={customerData.straat}
+                      onChange={handleChange('straat')}
+                      error={!!errors.straat}
+                      helperText={errors.straat || 'Kies een straat uit de lijst en vul je huisnummer in'}
+                      required
+                      inputProps={{
+                        list: 'straatnamen-list',
+                      }}
+                    />
+                    <datalist id="straatnamen-list">
+                      {straatnamen.map((straat, index) => (
+                        <option key={`${straat}-${index}`} value={straat} />
+                      ))}
+                    </datalist>
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <TextField
+                      fullWidth
+                      label={`${t.houseNumber} *`}
+                      value={customerData.huisnummer}
+                      onChange={handleChange('huisnummer')}
+                      error={!!errors.huisnummer}
+                      helperText={errors.huisnummer}
+                      required
+                    />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <FormControl fullWidth required error={!!errors.postcode_gemeente}>
+                      <InputLabel>{t.postcode} {t.city} *</InputLabel>
+                      <Select
+                        value={customerData.postcode_gemeente}
+                        onChange={(e) => handleChange('postcode_gemeente')({ target: { value: e.target.value } })}
+                        label={`${t.postcode} ${t.city} *`}
+                      >
+                        <MenuItem value="">{t.language === 'nl' ? 'Selecteer postcode en gemeente' : t.language === 'fr' ? 'Sélectionnez code postal et ville' : 'Select postcode and city'}</MenuItem>
+                        {Array.isArray(postcodes) && postcodes.map((pc) => (
+                          <MenuItem key={pc} value={pc}>
+                            {pc}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                      {errors.postcode_gemeente && (
+                        <Typography variant="caption" color="error" sx={{ mt: 0.5, ml: 1.75 }}>
+                          {errors.postcode_gemeente}
+                        </Typography>
+                      )}
+                    </FormControl>
+                  </Grid>
+                </>
+              )}
+              {customerData.is_afhaal && (
+                <Grid item xs={12}>
+                  <Alert severity="info" sx={{ mb: 2 }}>
+                    {t.language === 'nl' 
+                      ? 'Bij afhaal is alleen naam en telefoonnummer verplicht. Als je later een adres geeft voor levering, wordt dit opgeslagen maar niet afgedrukt bij afhaal.' 
+                      : t.language === 'fr' 
+                      ? 'Pour les commandes à emporter, seuls le nom et le numéro de téléphone sont obligatoires. Si vous fournissez une adresse plus tard pour la livraison, elle sera enregistrée mais ne sera pas imprimée lors du retrait.' 
+                      : 'For pickup orders, only name and phone number are required. If you provide an address later for delivery, it will be saved but not printed for pickup.'}
+                  </Alert>
+                </Grid>
+              )}
               <Grid item xs={12}>
                 <FormControl fullWidth required error={!!errors.betaalmethode}>
                   <InputLabel>{t.paymentMethod} *</InputLabel>

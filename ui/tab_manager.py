@@ -39,7 +39,7 @@ class TabManager:
         load_callbacks: Dict[str, callable]
     ) -> None:
         """
-        Load content for a tab when it's first selected (OPTIMIZED - async for heavy tabs).
+        Load content for a tab when it's first selected (OPTIMIZED - always async for fast tab switching).
         
         Args:
             title: Tab title
@@ -52,31 +52,56 @@ class TabManager:
         parent = info["frame"]
         callback = load_callbacks.get(title)
         if callback:
-            # Heavy tabs: load asynchronously to prevent UI freeze
-            heavy_tabs = ["Geschiedenis", "Rapportage", "Koeriers", "Online Bestellingen"]
-            if title in heavy_tabs:
-                # Schedule async load (non-blocking)
-                self.notebook.after_idle(lambda: self._load_tab_async(title, parent, callback, info))
-            else:
-                # Light tabs: load immediately
-                try:
-                    callback(parent)
-                    info["loaded"] = True
-                except Exception as e:
-                    from logging_config import get_logger
-                    logger = get_logger("pizzeria.ui.tab_manager")
-                    logger.exception(f"Error loading tab {title}: {e}")
-                    info["loaded"] = True
+            # Show loading indicator immediately for better UX
+            self._show_loading_indicator(parent, title)
+            
+            # Always load asynchronously for fast tab switching (non-blocking)
+            # Use after(1) instead of after_idle for faster response
+            self.notebook.after(1, lambda: self._load_tab_async(title, parent, callback, info))
+    
+    def _show_loading_indicator(self, parent: tk.Frame, title: str) -> None:
+        """Show a loading indicator while tab content is loading."""
+        # Clear existing content
+        for widget in parent.winfo_children():
+            widget.destroy()
+        
+        # Show simple loading message
+        loading_label = tk.Label(
+            parent,
+            text=f"Laden {title}...",
+            font=("Arial", 12),
+            fg="#666"
+        )
+        loading_label.pack(expand=True)
     
     def _load_tab_async(self, title: str, parent: tk.Frame, callback: callable, info: Dict[str, Any]) -> None:
         """Load tab content asynchronously (non-blocking)."""
         try:
+            # Clear loading indicator if still present
+            for widget in parent.winfo_children():
+                if isinstance(widget, tk.Label) and "Laden" in widget.cget("text"):
+                    widget.destroy()
+                    break
+            
+            # Load actual content
             callback(parent)
             info["loaded"] = True
         except Exception as e:
             from logging_config import get_logger
             logger = get_logger("pizzeria.ui.tab_manager")
             logger.exception(f"Error loading tab {title}: {e}")
+            
+            # Show error message
+            for widget in parent.winfo_children():
+                widget.destroy()
+            error_label = tk.Label(
+                parent,
+                text=f"Fout bij laden {title}:\n{str(e)}",
+                font=("Arial", 10),
+                fg="#DC3545",
+                justify=tk.LEFT
+            )
+            error_label.pack(expand=True, padx=20, pady=20)
             info["loaded"] = True
     
     def on_tab_changed(

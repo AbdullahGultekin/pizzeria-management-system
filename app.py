@@ -1340,7 +1340,38 @@ info@pitapizzanapoli.be
         
         # Callback for when product is added
         def on_add(result: Dict[str, Any]) -> None:
-            self.bestelregels.append(result)
+            # Check if same product with same extras already exists
+            extras_key = json.dumps(result.get('extras', {}), sort_keys=True, ensure_ascii=False)
+            product_key = (
+                result.get('categorie', ''),
+                result.get('product', ''),
+                extras_key,
+                result.get('opmerking', '')
+            )
+            
+            # Search for existing item with same key
+            found_existing = False
+            for existing_item in self.bestelregels:
+                existing_extras_key = json.dumps(existing_item.get('extras', {}), sort_keys=True, ensure_ascii=False)
+                existing_key = (
+                    existing_item.get('categorie', ''),
+                    existing_item.get('product', ''),
+                    existing_extras_key,
+                    existing_item.get('opmerking', '')
+                )
+                
+                if existing_key == product_key:
+                    # Same product with same extras and opmerking - increase quantity
+                    existing_item['aantal'] = int(existing_item.get('aantal', 0)) + int(result.get('aantal', 1))
+                    found_existing = True
+                    logger.info(f"Product '{result.get('product')}' al in bestelling, aantal verhoogd naar {existing_item['aantal']}")
+                    break
+            
+            # If not found, add as new item
+            if not found_existing:
+                self.bestelregels.append(result)
+                logger.info(f"Nieuw product '{result.get('product')}' toegevoegd aan bestelling")
+            
             self.update_overzicht()
         
         # Callback for when dialog closes
@@ -1381,11 +1412,39 @@ info@pitapizzanapoli.be
             'opmerking': ''
         }
         
-        # Add to order
-        self.bestelregels.append(order_item)
-        self.update_overzicht()
+        # Check if same product with same extras already exists
+        extras_key = json.dumps(order_item.get('extras', {}), sort_keys=True, ensure_ascii=False)
+        product_key = (
+            order_item.get('categorie', ''),
+            order_item.get('product', ''),
+            extras_key,
+            order_item.get('opmerking', '')
+        )
         
-        logger.info(f"Quick add: {product.get('naam', '')} from {category}")
+        # Search for existing item with same key
+        found_existing = False
+        for existing_item in self.bestelregels:
+            existing_extras_key = json.dumps(existing_item.get('extras', {}), sort_keys=True, ensure_ascii=False)
+            existing_key = (
+                existing_item.get('categorie', ''),
+                existing_item.get('product', ''),
+                existing_extras_key,
+                existing_item.get('opmerking', '')
+            )
+            
+            if existing_key == product_key:
+                # Same product with same extras and opmerking - increase quantity
+                existing_item['aantal'] = int(existing_item.get('aantal', 0)) + 1
+                found_existing = True
+                logger.info(f"Quick add: Product '{order_item.get('product')}' al in bestelling, aantal verhoogd naar {existing_item['aantal']}")
+                break
+        
+        # If not found, add as new item
+        if not found_existing:
+            self.bestelregels.append(order_item)
+            logger.info(f"Quick add: Nieuw product '{order_item.get('product')}' toegevoegd aan bestelling")
+        
+        self.update_overzicht()
     
     def render_producten(self) -> None:
         """Render product grid for current category - original version."""
@@ -1456,22 +1515,73 @@ info@pitapizzanapoli.be
         self.state["categorie"] = category_name
         products = list(self.menu_data.get(category_name, []))
         
+        # Remove duplicates based on ID and name (case-insensitive)
+        seen_ids = set()
+        seen_names = set()
+        unique_products = []
+        duplicates_found = []
+        
+        for product in products:
+            product_id = product.get('id', '')
+            product_name = product.get('naam', '').strip()
+            name_lower = product_name.lower() if product_name else ''
+            
+            # Check for duplicate ID
+            if product_id and product_id in seen_ids:
+                duplicates_found.append(f"ID {product_id} ({product_name})")
+                continue  # Skip duplicate
+            
+            # Check for duplicate name (case-insensitive)
+            if name_lower and name_lower in seen_names:
+                duplicates_found.append(f"Naam '{product_name}' (ID: {product_id})")
+                continue  # Skip duplicate
+            
+            seen_ids.add(product_id)
+            seen_names.add(name_lower)
+            unique_products.append(product)
+        
+        products = unique_products
+        
+        # Log duplicates if found
+        if duplicates_found:
+            logger.warning(f"Duplicaten gevonden in categorie '{category_name}': {duplicates_found}")
+            # Show warning only once per session per category
+            if not hasattr(self, '_duplicate_warnings_shown'):
+                self._duplicate_warnings_shown = set()
+            warning_key = f"{category_name}:{','.join(duplicates_found)}"
+            if warning_key not in self._duplicate_warnings_shown:
+                messagebox.showwarning(
+                    "Duplicaten Gevonden",
+                    f"Duplicaten gevonden in categorie '{category_name}':\n\n" +
+                    "\n".join(duplicates_found) +
+                    "\n\nDuplicaten zijn automatisch verwijderd. Controleer menu.json."
+                )
+                self._duplicate_warnings_shown.add(warning_key)
+        
         # Apply product order if available
         product_order = self.app_settings.get("product_order", {})
         if category_name in product_order:
             preferred_order = product_order[category_name]
-            # Create a mapping of product names to products
-            product_map = {p.get('naam', ''): p for p in products}
+            # Create a mapping of product names to products (use first occurrence if duplicate names)
+            product_map = {}
+            for p in products:
+                name = p.get('naam', '').strip()
+                if name and name not in product_map:
+                    product_map[name] = p
             # Order products according to preferred order
             ordered_products = []
+            seen_in_order = set()
             for name in preferred_order:
-                if name in product_map:
-                    ordered_products.append(product_map[name])
-            # Add any products not in the order list at the end
+                name_stripped = name.strip()
+                if name_stripped in product_map and name_stripped not in seen_in_order:
+                    ordered_products.append(product_map[name_stripped])
+                    seen_in_order.add(name_stripped)
+            # Add any products not in the order list at the end (avoid duplicates)
             for product in products:
-                product_name = product.get('naam', '')
-                if product_name not in preferred_order:
+                product_name = product.get('naam', '').strip()
+                if product_name not in seen_in_order:
                     ordered_products.append(product)
+                    seen_in_order.add(product_name)
             products = ordered_products
         
         self.state["producten"] = products
@@ -1691,16 +1801,23 @@ info@pitapizzanapoli.be
         # Create other tabs
         self.setup_other_tabs()
         
-        # Bind tab change event
-        self.app_tabs.bind("<<NotebookTabChanged>>", self.on_tab_changed)
+        # Bind tab change event (use after for faster response)
+        def on_tab_change(event):
+            # Schedule tab change handling immediately but non-blocking
+            self.root.after(0, lambda: self.on_tab_changed(event))
+        
+        self.app_tabs.bind("<<NotebookTabChanged>>", on_tab_change)
     
     def setup_other_tabs(self) -> None:
         """Setup tabs for other modules (lazy load) based on mode."""
         if self.mode == "front":
             # Front mode: Bestellen, Online Bestellingen, Koeriers, Afhaal, Geschiedenis
+            # Also add Menu Management and Extras for easy access
             self.tab_manager.add_tab("Online Bestellingen")
             self.tab_manager.add_tab("Koeriers")
             self.tab_manager.add_tab("Afhaal")
+            self.tab_manager.add_tab("Menu Management")
+            self.tab_manager.add_tab("Extras")
             self.tab_manager.add_tab("Geschiedenis")
         else:
             # Back mode: Admin functions + Geschiedenis
@@ -1808,13 +1925,38 @@ info@pitapizzanapoli.be
             
             return ordered_categories
         
-        # Header (Snelle Acties verwijderd voor meer ruimte)
+        # Header with management buttons
         header_bar = tk.Frame(menu_selection_frame, padx=4, pady=4, bg="#ECECEC")
         header_bar.pack(fill=tk.X)
         tk.Label(header_bar, text="Categorieën", font=("Arial", 11, "bold"), bg="#ECECEC").pack(side=tk.LEFT)
         tk.Label(header_bar, text="Kolommen:", bg="#ECECEC").pack(side=tk.LEFT, padx=(12, 4))
         category_columns_var = tk.IntVar(master=header_bar, value=5)
         tk.Spinbox(header_bar, from_=1, to=10, width=3, textvariable=category_columns_var).pack(side=tk.LEFT)
+        
+        # Management buttons (available in both modes)
+        def open_menu_management_tab():
+            """Open Menu Management tab"""
+            # Find the tab index
+            for i in range(self.app_tabs.index("end")):
+                if self.app_tabs.tab(i, "text") == "Menu Management":
+                    self.app_tabs.select(i)
+                    return
+            messagebox.showinfo("Info", "Menu Management tab niet gevonden. Probeer opnieuw.")
+        
+        def open_extras_management_tab():
+            """Open Extras Management tab"""
+            # Find the tab index
+            for i in range(self.app_tabs.index("end")):
+                if self.app_tabs.tab(i, "text") == "Extras":
+                    self.app_tabs.select(i)
+                    return
+            messagebox.showinfo("Info", "Extras tab niet gevonden. Probeer opnieuw.")
+        
+        # Add management buttons to header
+        tk.Button(header_bar, text="📋 Menu Beheren", command=open_menu_management_tab, 
+                 bg="#D1FFD1", font=("Arial", 9)).pack(side=tk.LEFT, padx=(20, 5))
+        tk.Button(header_bar, text="⚙️ Opties Beheren", command=open_extras_management_tab, 
+                 bg="#D1E7FF", font=("Arial", 9)).pack(side=tk.LEFT, padx=5)
         
         def open_cat_order_dialog():
             """Open category order dialog with all available categories."""

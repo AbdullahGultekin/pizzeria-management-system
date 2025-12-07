@@ -9,6 +9,11 @@ def open_extras_management(root):
     win = root
     for w in win.winfo_children():
         w.destroy()
+    
+    # Show loading indicator immediately
+    loading_label = tk.Label(win, text="Extras data laden...", font=("Arial", 11), fg="#666")
+    loading_label.pack(expand=True)
+    win.update()  # Force UI update
 
     # Hoofdcontainer in de tab
     container = tk.Frame(win, padx=10, pady=10)
@@ -57,7 +62,9 @@ def open_extras_management(root):
     # win.minsize(1200, 700)
     # Gebruik de bestaande 'win' (tab-frame); geen apart venster
 
-    # Data laden
+    # Data laden (remove loading indicator first)
+    loading_label.destroy()
+    
     extras_data = load_extras_data()
     menu_categories = load_menu_categories()
 

@@ -39,9 +39,18 @@ def open_menu_management(root):
     win = root
     for w in win.winfo_children():
         w.destroy()
-
-    # Menu data laden
+    
+    # Show loading indicator immediately
+    loading_label = tk.Label(win, text="Menu data laden...", font=("Arial", 11), fg="#666")
+    loading_label.pack(expand=True)
+    win.update()  # Force UI update
+    
+    # Menu data laden (can be slow for large files)
     menu_data = load_menu_data()
+    
+    # Remove loading indicator
+    loading_label.destroy()
+    
     if not menu_data:
         return
 
@@ -196,13 +205,41 @@ def open_menu_management(root):
 
         products_title.config(text=f"Producten — {category}")
 
+        # Track seen IDs and names to detect duplicates
+        seen_ids = set()
+        seen_names = set()
+        duplicates_found = []
+        
         for product in menu_data[category]:
+            product_id = product.get('id', '')
+            product_name = product.get('naam', '')
+            
+            # Check for duplicate IDs
+            if product_id and product_id in seen_ids:
+                duplicates_found.append(f"ID {product_id} ({product_name})")
+            seen_ids.add(product_id)
+            
+            # Check for duplicate names (case-insensitive)
+            name_lower = product_name.lower() if product_name else ''
+            if name_lower and name_lower in seen_names:
+                duplicates_found.append(f"Naam '{product_name}' (ID: {product_id})")
+            seen_names.add(name_lower)
+            
             product_tree.insert('', tk.END, values=(
-                product.get('id', ''),
-                product.get('naam', ''),
+                product_id,
+                product_name,
                 f"{product.get('prijs', 0):.2f}",
                 product.get('desc', '')
             ))
+        
+        # Show warning if duplicates found
+        if duplicates_found:
+            messagebox.showwarning(
+                "Duplicaten Gevonden",
+                f"Waarschuwing: Duplicaten gevonden in categorie '{category}':\n\n" +
+                "\n".join(duplicates_found) +
+                "\n\nControleer menu.json en verwijder duplicaten."
+            )
 
     def add_product():
         """Voegt een nieuw product toe"""
