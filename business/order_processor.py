@@ -83,7 +83,7 @@ class OrderProcessor:
                 postcode = ""  # Not required for pickup
             else:
                 adres = validate_address(adres_entry.get().strip())
-                nr = validate_house_number(nr_entry.get().strip())
+                nr = validate_house_number(nr_entry.get().strip(), required=False)  # Optional for addresses like harbor numbers
                 postcode = validate_postcode(postcode_var.get(), postcodes)
             opmerking = sanitize_string(opmerkingen_entry.get().strip(), max_length=500)
         except ValidationError as e:

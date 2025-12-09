@@ -179,7 +179,7 @@ class EnhancedCustomerForm:
                 if hasattr(self, 'street_label') and self.street_label:
                     self.street_label.config(text="📍 Adres *", fg=self.COLORS['text_primary'])
                 if hasattr(self, 'nr_label') and self.nr_label:
-                    self.nr_label.config(text="Nr *", fg=self.COLORS['text_primary'])
+                    self.nr_label.config(text="Nr", fg=self.COLORS['text_primary'])
                 if hasattr(self, 'postcode_label') and self.postcode_label:
                     self.postcode_label.config(text="🏘️ Postcode/Gemeente *", fg=self.COLORS['text_primary'])
         
@@ -343,10 +343,10 @@ class EnhancedCustomerForm:
         )
         self.adres_entry.grid(row=0, column=1, sticky="w", padx=(0, 6))
         
-        # House number - larger
+        # House number - larger (optional for addresses like harbor numbers)
         self.nr_label = tk.Label(
             address_frame,
-            text="Nr *",
+            text="Nr",
             font=("Arial", 9, "bold"),
             bg=self.COLORS['bg_primary'],
             fg=self.COLORS['text_primary']

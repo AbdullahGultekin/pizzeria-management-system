@@ -19,6 +19,24 @@ A comprehensive desktop application for managing pizzeria operations including o
 - Tkinter (usually included with Python)
 - See `requirements.txt` for additional dependencies
 
+## Project Structuur
+
+```
+├── app.py                 # Hoofd applicatie
+├── main.py               # Entry point
+├── requirements.txt      # Python dependencies
+├── README.md            # Dit bestand
+├── docs/                # Documentatie
+├── tests/               # Test code
+│   └── scripts/         # Test scripts en rapporten
+├── scripts/             # Utility scripts
+│   ├── start/           # Start scripts
+│   └── build/           # Build scripts
+├── logs/                # Log bestanden
+└── data/                # Data bestanden
+    └── backup/          # Backup bestanden
+```
+
 ## Installation
 
 1. Clone or download this repository

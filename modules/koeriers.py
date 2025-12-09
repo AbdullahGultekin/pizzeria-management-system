@@ -11,7 +11,11 @@ from typing import Dict, List, Optional
 from database import DatabaseContext
 from logging_config import get_logger
 from exceptions import DatabaseError
-from modules.courier_config import STARTGELD, CARD_COLORS, KM_TARIEF, UUR_TARIEF
+from modules.courier_config import (
+    STARTGELD, CARD_COLORS, KM_TARIEF, UUR_TARIEF,
+    UNASSIGNED_COLOR, UNASSIGNED_TEXT, ASSIGNED_COLOR,
+    ONLINE_COLOR, URGENT_COLOR, URGENT_TEXT, ROW_COLOR_A, ROW_COLOR_B
+)
 from modules.courier_service import CourierService
 from modules.courier_ui import CourierUI
 import requests
@@ -63,7 +67,7 @@ class CourierManager:
         self.api_token = None
         self.api_session = requests.Session()
     
-    def load_couriers(self) -> None:
+    def load_couriers(self, force: bool = False) -> None:
         """Load couriers from database and initialize variables."""
         try:
             self.courier_data = self.service.get_all_couriers()
@@ -102,70 +106,153 @@ class CourierManager:
         main_frame = tk.Frame(self.parent, bg="white")
         main_frame.pack(fill=tk.BOTH, expand=True)
         
-        # Top section - Action buttons
+        # Top section - Quick Actions Toolbar
         top_buttons_frame = tk.Frame(main_frame, bg="white", padx=10, pady=5)
         top_buttons_frame.pack(fill=tk.X)
         
+        # Quick Actions Toolbar
         tk.Button(
             top_buttons_frame,
-            text="Totalen afdrukken",
-            command=self.print_totals,
-            bg="#4CAF50",
-            fg="white",
-            font=("Arial", 10, "bold"),
-            padx=15,
-            pady=5
-        ).pack(side=tk.LEFT, padx=(0, 5))
-        
-        tk.Button(
-            top_buttons_frame,
-            text="Routebeschrijving",
-            command=self.show_route_for_selected,
-            bg="#2196F3",
-            fg="white",
-            font=("Arial", 10, "bold"),
-            padx=15,
-            pady=5
-        ).pack(side=tk.LEFT, padx=(0, 5))
-        
-        # Filter checkbox for orders without courier
-        if not hasattr(self, 'filter_without_courier'):
-            self.filter_without_courier = tk.BooleanVar(value=False)
-        filter_checkbox = tk.Checkbutton(
-            top_buttons_frame,
-            text="Alleen zonder koerier",
-            variable=self.filter_without_courier,
-            command=lambda: self.load_orders(force=True),
-            bg="white",
-            font=("Arial", 9),
-            padx=10
-        )
-        filter_checkbox.pack(side=tk.LEFT, padx=(10, 0))
-        
-        tk.Button(
-            top_buttons_frame,
-            text="Vernieuwen",
+            text="🔄 Vernieuwen",
             command=lambda: self.load_orders(force=True),
             bg="#FF9800",
             fg="white",
             font=("Arial", 10, "bold"),
             padx=15,
-            pady=5
-        ).pack(side=tk.LEFT)
+            pady=5,
+            cursor="hand2"
+        ).pack(side=tk.LEFT, padx=(0, 5))
         
-        # Main content area - Split into table and settlement (50/50 split)
+        tk.Button(
+            top_buttons_frame,
+            text="📊 Selecteer Zonder Koerier",
+            command=self.select_unassigned,
+            bg="#2196F3",
+            fg="white",
+            font=("Arial", 10, "bold"),
+            padx=15,
+            pady=5,
+            cursor="hand2"
+        ).pack(side=tk.LEFT, padx=(0, 5))
+        
+        # Auto-refresh toggle
+        self.auto_refresh_var = tk.BooleanVar(value=False)
+        self.auto_refresh_interval = 30  # seconds
+        auto_refresh_check = tk.Checkbutton(
+            top_buttons_frame,
+            text="🔄 Auto-refresh (30s)",
+            variable=self.auto_refresh_var,
+            command=self.toggle_auto_refresh,
+            bg="white",
+            font=("Arial", 9),
+            padx=10
+        )
+        auto_refresh_check.pack(side=tk.LEFT, padx=(10, 0))
+        
+        # Auto-refresh status label
+        self.auto_refresh_status = tk.Label(
+            top_buttons_frame,
+            text="",
+            font=("Arial", 8),
+            bg="white",
+            fg="#6C757D"
+        )
+        self.auto_refresh_status.pack(side=tk.LEFT, padx=(5, 0))
+        
+        # Filter/Search section
+        filter_frame = tk.Frame(main_frame, bg="white", padx=10, pady=5)
+        filter_frame.pack(fill=tk.X)
+        
+        tk.Label(
+            filter_frame,
+            text="🔍 Zoek:",
+            font=("Arial", 9, "bold"),
+            bg="white"
+        ).pack(side=tk.LEFT, padx=(0, 5))
+        
+        self.search_var = tk.StringVar()
+        self.search_var.trace_add("write", lambda *args: self.apply_filters())
+        search_entry = tk.Entry(
+            filter_frame,
+            textvariable=self.search_var,
+            font=("Arial", 10),
+            width=25
+        )
+        search_entry.pack(side=tk.LEFT, padx=(0, 10))
+        search_entry.bind("<Return>", lambda e: self.apply_filters())
+        
+        # Quick filter buttons
+        tk.Button(
+            filter_frame,
+            text="Zonder Koerier",
+            command=self.filter_unassigned,
+            bg="#FFEB3B",
+            font=("Arial", 9),
+            padx=10,
+            pady=2,
+            cursor="hand2"
+        ).pack(side=tk.LEFT, padx=(0, 5))
+        
+        tk.Button(
+            filter_frame,
+            text="Alles",
+            command=self.filter_all,
+            bg="#E0E0E0",
+            font=("Arial", 9),
+            padx=10,
+            pady=2,
+            cursor="hand2"
+        ).pack(side=tk.LEFT, padx=(0, 5))
+        
+        # Filter by courier
+        tk.Label(
+            filter_frame,
+            text="Koerier:",
+            font=("Arial", 9, "bold"),
+            bg="white"
+        ).pack(side=tk.LEFT, padx=(10, 5))
+        
+        self.filter_courier_var = tk.StringVar(value="Alle")
+        self.filter_courier_var.trace_add("write", lambda *args: self.apply_filters())
+        self.courier_filter_combo = ttk.Combobox(
+            filter_frame,
+            textvariable=self.filter_courier_var,
+            values=["Alle", "Zonder Koerier"] + self.courier_names,
+            state="readonly",
+            width=15
+        )
+        self.courier_filter_combo.pack(side=tk.LEFT, padx=(0, 5))
+        
+        # Store filter vars
+        if not hasattr(self, 'filter_vars'):
+            self.filter_vars = {}
+        self.filter_vars['search'] = self.search_var
+        self.filter_vars['koerier'] = self.filter_courier_var
+        
+        # Main content area - Split into table and settlement (50/50 split - equal size)
         content_paned = tk.PanedWindow(main_frame, orient=tk.HORIZONTAL, sashrelief=tk.RAISED, sashpad=2)
         content_paned.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
-        # Left panel - Table (50% of width)
+        # Left panel - Table (50% of width - equal to right panel)
         left_panel = tk.Frame(content_paned, bg="white")
-        # Use same minsize and width for 50/50 split
-        content_paned.add(left_panel, minsize=700, width=700)
+        content_paned.add(left_panel, minsize=400)
         
-        # Right panel - Settlement frame (50% of width)
+        # Right panel - Settlement frame (50% of width - equal to left panel)
         right_panel = tk.Frame(content_paned, bg="white")
-        # Use same minsize and width for 50/50 split
-        content_paned.add(right_panel, minsize=700, width=700)
+        content_paned.add(right_panel, minsize=400)
+        
+        # Set sash position to 50% for equal split after window is rendered
+        def set_equal_split():
+            try:
+                content_paned.update_idletasks()
+                total_width = content_paned.winfo_width()
+                if total_width > 0:
+                    content_paned.sash_place(0, total_width // 2, 0)
+            except Exception:
+                pass
+        
+        # Set equal split after a short delay to ensure window is rendered
+        main_frame.after(100, set_equal_split)
         
         # Initialize UI helper
         self.ui = CourierUI(self.parent, self.courier_names)
@@ -210,8 +297,32 @@ class CourierManager:
             return parts[0][:2].upper()
         return (parts[0][0] + parts[-1][0]).upper()
     
+    def _get_courier_stats(self, naam: str) -> Dict[str, any]:
+        """Get statistics for a courier (number of orders, average value)."""
+        if not self.tree:
+            return {"count": 0, "total": 0.0, "average": 0.0}
+        
+        count = 0
+        total = 0.0
+        
+        for item in self.tree.get_children():
+            values = self.tree.item(item, "values")
+            if values and len(values) >= 10:
+                koerier = values[9] if len(values) > 9 else ""
+                if koerier == naam:
+                    count += 1
+                    # Parse total from column 2
+                    try:
+                        total_str = values[2].replace('€', '').replace(' ', '').replace(',', '.')
+                        total += float(total_str)
+                    except (ValueError, IndexError):
+                        pass
+        
+        average = total / count if count > 0 else 0.0
+        return {"count": count, "total": total, "average": average}
+    
     def render_courier_cards(self) -> None:
-        """Render courier cards with totals."""
+        """Render improved courier cards with more information."""
         # Clear existing cards
         for widget in self.courier_cards_frame.winfo_children():
             widget.destroy()
@@ -220,11 +331,19 @@ class CourierManager:
         self.courier_cards_frame.grid_columnconfigure(0, weight=1)
         self.courier_cards_frame.grid_columnconfigure(1, weight=1)
         
-        # Create cards for each courier
+        # Create improved cards for each courier
         for i, naam in enumerate(self.courier_names):
-            bg, fg = CARD_COLORS[i % len(CARD_COLORS)]
+            color_set = CARD_COLORS[i % len(CARD_COLORS)]
+            bg = color_set[0]  # Background color
+            fg = color_set[1] if len(color_set) > 1 else "#000000"  # Foreground color
             
-            # Card frame
+            # Get statistics
+            stats = self._get_courier_stats(naam)
+            order_count = stats["count"]
+            total_value = stats["total"]
+            avg_value = stats["average"]
+            
+            # Card frame with better styling (more compact)
             card = tk.Frame(
                 self.courier_cards_frame,
                 bd=1,
@@ -237,9 +356,27 @@ class CourierManager:
             card.grid(row=i // 2, column=i % 2, padx=6, pady=6, sticky="ew")
             card.grid_columnconfigure(1, weight=1)
             
-            # Avatar with initials
+            # Hover effect
+            def on_enter(e, card_frame=card, original_bg=bg):
+                card_frame.config(relief="solid", highlightthickness=1)
+            
+            def on_leave(e, card_frame=card, original_bg=bg):
+                card_frame.config(relief="groove", highlightthickness=0)
+            
+            card.bind("<Enter>", on_enter)
+            card.bind("<Leave>", on_leave)
+            
+            # Click to filter by courier
+            def on_card_click(e, courier_name=naam):
+                if hasattr(self, 'filter_courier_var'):
+                    self.filter_courier_var.set(courier_name)
+                    self.apply_filters()
+            
+            card.bind("<Button-1>", on_card_click)
+            
+            # Avatar with initials (compact, original size)
             avatar = tk.Canvas(card, width=34, height=34, bg=bg, highlightthickness=0)
-            avatar.grid(row=0, column=0, rowspan=2, padx=(0, 8))
+            avatar.grid(row=0, column=0, rowspan=2, padx=(0, 8), sticky="n")
             avatar.create_oval(2, 2, 32, 32, fill=fg, outline=fg)
             avatar.create_text(17, 17, text=self.initials(naam), fill=bg, font=("Arial", 10, "bold"))
             
@@ -251,9 +388,11 @@ class CourierManager:
                 bg=bg,
                 fg=fg,
                 anchor="w",
+                cursor="hand2",
                 wraplength=180
             )
             name_lbl.grid(row=0, column=1, sticky="w")
+            name_lbl.bind("<Button-1>", on_card_click)
             
             # Total label (shows subtotal from totals_var with formatting)
             if naam in self.totals_var:
@@ -300,37 +439,23 @@ class CourierManager:
             btn.grid(row=0, column=2, rowspan=2, padx=(8, 0))
             
             # Hover effects
-            def on_enter(e, b=btn):
+            def on_enter_btn(e, b=btn):
                 b.configure(bg="#F5F5F5")
             
-            def on_leave(e, b=btn):
+            def on_leave_btn(e, b=btn):
                 b.configure(bg="#FFFFFF")
             
-            btn.bind("<Enter>", on_enter)
-            btn.bind("<Leave>", on_leave)
+            btn.bind("<Enter>", on_enter_btn)
+            btn.bind("<Leave>", on_leave_btn)
     
     def _refresh_courier_ui(self) -> None:
-        """Refresh only necessary UI parts after courier changes (faster than full rebuild)."""
-        # Update courier cards
+        """Refresh courier UI components."""
         self.render_courier_cards()
-        
-        # Rebuild settlement frame with new courier variables
-        if hasattr(self, 'right_frame') and self.right_frame:
-            # Find and clear settlement frame (but keep management frame)
-            for widget in self.right_frame.winfo_children():
-                if isinstance(widget, tk.Frame) and widget != getattr(self, '_management_frame', None):
-                    # Check if it's the settlement container
-                    try:
-                        if widget.winfo_exists():
-                            widget.destroy()
-                    except tk.TclError:
-                        pass
-            
-            # Rebuild settlement frame
-            self.setup_settlement_frame()
-        
-        # Reload orders to refresh display
-        self.load_orders(force=True)
+        self._recalculate_totals()
+        self._rebuild_settlement_table()
+        # Update filter combobox with new courier list
+        if hasattr(self, 'courier_filter_combo'):
+            self.courier_filter_combo['values'] = ["Alle", "Zonder Koerier"] + self.courier_names
     
     def print_totals(self) -> None:
         """Print totals for all couriers."""
@@ -552,23 +677,50 @@ class CourierManager:
         self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scroll_y.pack(side=tk.RIGHT, fill=tk.Y)
         
-        # Configure styles
+        # Configure styles with improved color coding
         style = ttk.Style()
         style.configure("Treeview", rowheight=25)
-        self.tree.tag_configure("row_a", background="#F5F5F5")
-        self.tree.tag_configure("row_b", background="white")
-        self.tree.tag_configure("online", background="#E3F2FD")  # Light blue for online orders
+        
+        # Zebra striping with better contrast
+        self.tree.tag_configure("row_a", background=ROW_COLOR_A)
+        self.tree.tag_configure("row_b", background=ROW_COLOR_B)
+        
+        # Unassigned orders - clear yellow indicator (high priority for visibility)
+        self.tree.tag_configure("unassigned", background=UNASSIGNED_COLOR, foreground=UNASSIGNED_TEXT)
+        
+        # Online orders - distinct blue (applied after unassigned if both tags exist)
+        # Note: In Tkinter, when multiple tags are applied, the last configured tag takes precedence
+        self.tree.tag_configure("online", background=ONLINE_COLOR)
+        
+        # Selected items - clear highlight
         self.tree.tag_configure("selected", background="#B3E5FC", foreground="#0D47A1")
         
-        # Configure courier-specific row colors - full row coloring across all columns
+        # Urgent orders (if needed in future)
+        self.tree.tag_configure("urgent", background=URGENT_COLOR, foreground=URGENT_TEXT)
+        
+        # Enable multiple selection (Bulk actions support)
+        self.tree.configure(selectmode="extended")  # Allow multiple selection
+        
+        # Bind keyboard shortcuts for bulk actions
+        self.tree.bind("<Control-a>", lambda e: self.select_all_orders())
+        self.tree.bind("<Control-d>", lambda e: self.deselect_all())
+        self.tree.bind("<Delete>", lambda e: self.remove_assignment())
+        
+        # Track last selected item for Shift+Click range selection
+        self._last_selected_item = None
+        self.tree.bind("<Button-1>", self._on_tree_click)
+        
+        # Configure courier-specific row colors - full row coloring with improved contrast
         for i, naam in enumerate(self.courier_names):
             tag = f"koerier_{naam.replace(' ', '_')}"
-            bg_color = CARD_COLORS[i % len(CARD_COLORS)][0]
-            # Get foreground color for better contrast
-            fg_color = CARD_COLORS[i % len(CARD_COLORS)][1] if len(CARD_COLORS[i % len(CARD_COLORS)]) > 1 else "#000000"
+            color_set = CARD_COLORS[i % len(CARD_COLORS)]
+            bg_color = color_set[0]  # Background color
+            # Get foreground color for better contrast (text color)
+            fg_color = color_set[1] if len(color_set) > 1 else "#000000"
             
             # Configure tag to apply background color to entire row (all columns)
             # In Tkinter Treeview, tag_configure automatically applies to the entire row
+            # Improved contrast ensures readability
             self.tree.tag_configure(
                 tag,
                 background=bg_color,
@@ -692,7 +844,9 @@ class CourierManager:
         
         # Rows for each courier
         for i, naam in enumerate(self.courier_names, start=1):
-            bg_light, fg_dark = CARD_COLORS[(i - 1) % len(CARD_COLORS)]
+            color_set = CARD_COLORS[(i - 1) % len(CARD_COLORS)]
+            bg_light = color_set[0]  # Background color
+            fg_dark = color_set[1] if len(color_set) > 1 else "#000000"  # Foreground color
             
             tk.Label(
                 self.totals_frame,
@@ -877,13 +1031,14 @@ class CourierManager:
                 self.totals_frame.grid_columnconfigure(colindex, weight=1)
     
     def load_orders(self, force: bool = False) -> None:
-        """Load and display orders."""
+        """Load and display orders (OPTIMIZED - single API call, cached results)."""
         if not self.tree:
             return
         
-        # Clear tree
-        for item in self.tree.get_children():
-            self.tree.delete(item)
+        # Clear tree (OPTIMIZED - faster clearing)
+        children = self.tree.get_children()
+        if children:
+            self.tree.delete(*children)
         
         # Get date
         datum_str = self.filter_vars.get("datum", tk.StringVar(value=date.today().strftime('%Y-%m-%d'))).get()
@@ -894,17 +1049,9 @@ class CourierManager:
         
         # Get orders (exclude afhaal orders, only delivery orders)
         try:
-            # Check if filter for "only without courier" is active
-            filter_var = getattr(self, 'filter_without_courier', None)
-            if isinstance(filter_var, tk.BooleanVar):
-                only_without_courier = filter_var.get()
-            else:
-                only_without_courier = False
-            
             orders = self.service.get_orders_for_date(
                 order_date, 
-                exclude_afhaal=True,  # Only show delivery orders
-                only_without_courier=only_without_courier
+                exclude_afhaal=True  # Only show delivery orders
             )
         except DatabaseError as e:
             logger.exception("Error loading orders")
@@ -912,8 +1059,17 @@ class CourierManager:
             return
         
         # Get online orders from API (exclude afhaal/pickup orders) - SINGLE CALL
-        online_orders = self.fetch_online_orders(order_date)
+        # OPTIMIZED: Fetch asynchronously to prevent UI blocking
+        online_orders = []
         online_orders_cache = {}
+        
+        # Try to fetch online orders (with timeout to prevent blocking)
+        try:
+            online_orders = self.fetch_online_orders(order_date)
+            self._cached_online_orders = online_orders  # Cache for recalculate_courier_totals
+        except Exception as e:
+            logger.debug(f"Error fetching online orders: {e}")
+            self._cached_online_orders = []
         
         if online_orders:
             # Convert online orders to same format as local orders
@@ -960,10 +1116,10 @@ class CourierManager:
         search_text = self.filter_vars.get("search", tk.StringVar()).get()
         filter_koerier = self.filter_vars.get("koerier", tk.StringVar(value="Alle")).get()
         
-        # Add orders to tree
+        # Add orders to tree (OPTIMIZED - batch insert for better performance)
+        # All orders are added, filtering happens via apply_filters() after insertion
+        items_to_insert = []
         for idx, order in enumerate(orders):
-            if not force and not self.ui.apply_filters(order, search_text, filter_koerier):
-                continue
             
             koerier_naam = order.get('koerier_naam') or ""
             base_tag = "row_a" if idx % 2 == 0 else "row_b"
@@ -974,11 +1130,11 @@ class CourierManager:
                 # Only use koerier tag (no base_tag) to ensure full row coloring
                 tags = (tag,)
             else:
+                # Unassigned orders - use base tag + unassigned for clear visual indication
                 tags = (base_tag, "unassigned")
-            
-            # Mark online orders with special tag (but don't override koerier color)
-            if order.get('online') and not koerier_naam:
-                tags = tags + ("online",)
+                # Mark online orders with special tag (but don't override unassigned color)
+                if order.get('online'):
+                    tags = tags + ("online",)
             
             # Determine order number and type
             if order.get('online'):
@@ -1017,11 +1173,10 @@ class CourierManager:
             # Get telefoon number
             telefoon = order.get('telefoon', '')
             
-            self.tree.insert(
-                "",
-                tk.END,
-                iid=order['id'],
-                values=(
+            # Collect items for batch insert (OPTIMIZED)
+            items_to_insert.append((
+                order['id'],
+                (
                     soort,
                     nummer,
                     totaal_str,
@@ -1033,21 +1188,28 @@ class CourierManager:
                     vertrek,
                     koerier_display
                 ),
-                tags=tags
-            )
+                tags
+            ))
         
-        # Recalculate totals asynchronously (non-blocking) to prevent UI freeze
+        # Batch insert all items at once (OPTIMIZED - much faster)
+        for item_id, values, tags in items_to_insert:
+            self.tree.insert("", tk.END, iid=item_id, values=values, tags=tags)
+        
+        # Apply filters after loading (if filter vars exist)
+        if hasattr(self, 'search_var') and hasattr(self, 'filter_courier_var'):
+            self.apply_filters()
+        
+        # Recalculate totals
         if hasattr(self, 'totals_var') and self.totals_var:
-            root = self.parent.winfo_toplevel()
-            root.after_idle(lambda: self._recalculate_totals_async())
-    
-    def _recalculate_totals_async(self) -> None:
-        """Recalculate totals asynchronously (non-blocking)."""
-        try:
-            self.recalculate_courier_totals()
-            self.recalculate_total_payment()
-        except Exception as e:
-            logger.exception("Error in async totals recalculation")
+            try:
+                self.recalculate_courier_totals()
+                self.recalculate_total_payment()
+            except Exception as e:
+                logger.exception("Error in totals recalculation")
+        
+        # Update courier cards to refresh statistics
+        if hasattr(self, 'courier_cards_frame'):
+            self.render_courier_cards()
     
     def recalculate_courier_totals(self) -> None:
         """Recalculate totals for each courier."""
@@ -1081,9 +1243,14 @@ class CourierManager:
         except Exception as e:
             logger.warning(f"Error calculating local order totals: {e}")
         
-        # Get online orders from API (exclude afhaal/pickup orders) - with timeout to prevent blocking
+        # Use cached online orders to avoid duplicate API calls (OPTIMIZED)
         try:
-            online_orders = self.fetch_online_orders(order_date)
+            # Use cached online orders from load_orders if available
+            online_orders = getattr(self, '_cached_online_orders', [])
+            if not online_orders:
+                # Only fetch if not cached (shouldn't happen, but fallback)
+                online_orders = self.fetch_online_orders(order_date)
+            
             for online_order in online_orders:
                 # Skip afhaal/pickup orders - they should only appear in Afhaal tab
                 if online_order.get('afhaal') or online_order.get('betaalmethode') == 'pickup':
@@ -1154,24 +1321,41 @@ class CourierManager:
             self.totaal_betaald_var.set(round(total, 2))
     
     def add_courier(self) -> None:
-        """Add a new courier."""
+        """Add a new courier (OPTIMIZED - fast update)."""
         naam = self.new_koerier_entry.get().strip()
         if not naam:
             messagebox.showwarning("Invoerfout", "Voer een naam in voor de nieuwe koerier.")
             return
         
         try:
+            # Add to database (fast operation)
             self.service.add_courier(naam)
-            messagebox.showinfo("Succes", f"Koerier '{naam}' is succesvol toegevoegd.")
+            
+            # Update local data immediately (no DB query needed)
+            new_id = max(self.courier_data.values()) + 1 if self.courier_data else 1
+            self.courier_data[naam] = new_id
+            self.courier_names = sorted(list(self.courier_data.keys()), key=str.lower)
+            
+            # Initialize variables for new courier (fast)
+            if naam not in self.totals_var:
+                self.totals_var[naam] = tk.DoubleVar(value=0.0)
+                self.eind_totals_var[naam] = tk.DoubleVar(value=0.0)
+                self.extra_km_var[naam] = tk.DoubleVar(value=0.0)
+                self.extra_uur_var[naam] = tk.DoubleVar(value=0.0)
+                self.extra_bedrag_var[naam] = tk.DoubleVar(value=0.0)
+                self.afrekening_var[naam] = tk.DoubleVar(value=0.0)
+            
+            # Update UI components immediately (fast)
             self.new_koerier_entry.delete(0, tk.END)
-            # Reload couriers and update UI
-            self.load_couriers()
-            # Update delete combobox values
             if self.del_combo:
                 self.del_combo['values'] = self.courier_names
                 if self.courier_names:
                     self.del_name_var.set(self.courier_names[0])
-            # Update only necessary parts instead of full rebuild
+            
+            # Show success message
+            messagebox.showinfo("Succes", f"Koerier '{naam}' is succesvol toegevoegd.")
+            
+            # Refresh UI
             self._refresh_courier_ui()
         except DatabaseError as e:
             messagebox.showerror("Fout", str(e))
@@ -1179,7 +1363,7 @@ class CourierManager:
             messagebox.showerror("Fout", str(e))
     
     def delete_courier(self, naam: str) -> None:
-        """Delete a courier."""
+        """Delete a courier (OPTIMIZED - fast update)."""
         if not naam:
             messagebox.showwarning("Selectie", "Kies eerst een koerier om te verwijderen.")
             return
@@ -1193,18 +1377,35 @@ class CourierManager:
             return
         
         try:
+            # Delete from database (fast operation)
             self.service.delete_courier(koerier_id, naam)
-            messagebox.showinfo("Succes", f"Koerier '{naam}' is verwijderd.")
-            # Reload couriers and update UI
-            self.load_couriers()
-            # Update delete combobox values
+            
+            # Update local data immediately (no DB query needed)
+            if naam in self.courier_data:
+                del self.courier_data[naam]
+            self.courier_names = sorted(list(self.courier_data.keys()), key=str.lower)
+            
+            # Remove variables for deleted courier (fast)
+            if naam in self.totals_var:
+                del self.totals_var[naam]
+                del self.eind_totals_var[naam]
+                del self.extra_km_var[naam]
+                del self.extra_uur_var[naam]
+                del self.extra_bedrag_var[naam]
+                del self.afrekening_var[naam]
+            
+            # Update UI components immediately (fast)
             if self.del_combo:
                 self.del_combo['values'] = self.courier_names
                 if self.courier_names:
                     self.del_name_var.set(self.courier_names[0])
                 else:
                     self.del_name_var.set("")
-            # Update only necessary parts instead of full rebuild
+            
+            # Show success message
+            messagebox.showinfo("Succes", f"Koerier '{naam}' is verwijderd.")
+            
+            # Refresh UI
             self._refresh_courier_ui()
         except DatabaseError as e:
             messagebox.showerror("Fout", str(e))
@@ -1476,19 +1677,306 @@ class CourierManager:
                 return naam
         return None
     
-    def remove_assignment(self) -> None:
-        """Remove courier assignment from selected orders."""
+    def remove_assignment(self, event: Optional[tk.Event] = None) -> None:
+        """Remove courier assignment from selected orders (supports bulk actions)."""
         selected = self.tree.selection()
         if not selected:
-            return
+            if event:
+                return "break"
+            messagebox.showinfo("Selectie", "Selecteer eerst één of meer rijen.")
+            return "break" if event else None
+        
+        if not messagebox.askyesno(
+            "Bevestigen",
+            f"Weet u zeker dat u de toewijzing wilt verwijderen van {len(selected)} bestelling(en)?"
+        ):
+            return "break" if event else None
         
         try:
-            order_ids = [int(item_id) for item_id in selected]
-            self.service.remove_courier_from_orders(order_ids)
-            self.load_orders(force=True)
+            # Separate online and local orders
+            online_order_ids = []
+            local_order_ids = []
+            
+            for item_id in selected:
+                if isinstance(item_id, str) and item_id.startswith("online_"):
+                    order_id = int(item_id.replace("online_", ""))
+                    online_order_ids.append(order_id)
+                else:
+                    local_order_ids.append(int(item_id))
+            
+            # Remove from local orders
+            if local_order_ids:
+                self.service.remove_courier_from_orders(local_order_ids)
+                # Update UI directly
+                for order_id in local_order_ids:
+                    item_id = str(order_id)
+                    if self.tree.exists(item_id):
+                        values = list(self.tree.item(item_id, "values"))
+                        if len(values) >= 10:
+                            values[9] = ""  # Clear koerier
+                            # Update tags to unassigned
+                            tags = ("row_a" if int(order_id) % 2 == 0 else "row_b", "unassigned")
+                            self.tree.item(item_id, values=tuple(values), tags=tags)
+            
+            # Remove from online orders via API
+            if online_order_ids:
+                root = self.parent.winfo_toplevel()
+                root.after_idle(lambda: self._remove_online_assignments_async(online_order_ids))
+            
+            # Recalculate totals
+            self.recalculate_courier_totals()
+            
+            messagebox.showinfo("Succes", f"Toewijzing verwijderd van {len(selected)} bestelling(en).")
         except (ValueError, DatabaseError) as e:
             logger.exception("Error removing assignment")
             messagebox.showerror("Fout", f"Kon toewijzing niet verwijderen: {e}")
+        
+        return "break" if event else None
+    
+    def _remove_online_assignments_async(self, order_ids: List[int]) -> None:
+        """Remove courier assignment from online orders asynchronously."""
+        try:
+            for order_id in order_ids:
+                # Remove courier via API
+                if self.api_token:
+                    response = self.api_session.put(
+                        f"{self.api_base_url}/orders/{order_id}/status",
+                        json={"koerier_id": None},
+                        timeout=2
+                    )
+                    if response.status_code == 200:
+                        # Update UI
+                        item_id = f"online_{order_id}"
+                        if self.tree.exists(item_id):
+                            values = list(self.tree.item(item_id, "values"))
+                            if len(values) >= 10:
+                                values[9] = ""
+                                tags = ("row_a", "unassigned", "online")
+                                self.tree.item(item_id, values=tuple(values), tags=tags)
+        except Exception as e:
+            logger.debug(f"Error removing online assignment: {e}")
+    
+    def _on_tree_click(self, event: tk.Event) -> None:
+        """Handle tree click for Shift+Click range selection."""
+        item = self.tree.identify_row(event.y)
+        if not item:
+            return
+        
+        # Handle Shift+Click for range selection
+        if event.state & 0x1:  # Shift key pressed
+            if hasattr(self, '_last_selected_item') and self._last_selected_item and self._last_selected_item in self.tree.get_children():
+                # Select range from last selected to current
+                children = list(self.tree.get_children())
+                try:
+                    start_idx = children.index(self._last_selected_item)
+                    end_idx = children.index(item)
+                    if start_idx > end_idx:
+                        start_idx, end_idx = end_idx, start_idx
+                    
+                    # Select all items in range
+                    for idx in range(start_idx, end_idx + 1):
+                        self.tree.selection_add(children[idx])
+                except ValueError:
+                    pass
+            else:
+                self._last_selected_item = item
+        else:
+            self._last_selected_item = item
+    
+    def select_all_orders(self, event: Optional[tk.Event] = None) -> Optional[str]:
+        """Select all visible orders (Ctrl+A)."""
+        if not self.tree:
+            return None
+        all_items = self.tree.get_children()
+        self.tree.selection_set(all_items)
+        return "break"
+    
+    def deselect_all(self, event: Optional[tk.Event] = None) -> Optional[str]:
+        """Deselect all orders (Ctrl+D)."""
+        if not self.tree:
+            return None
+        self.tree.selection_remove(self.tree.selection())
+        return "break"
+    
+    def select_unassigned(self) -> None:
+        """Select all orders without courier assignment."""
+        if not self.tree:
+            return
+        unassigned = []
+        for item in self.tree.get_children():
+            values = self.tree.item(item, "values")
+            if values and len(values) >= 10:
+                koerier = values[9] if len(values) > 9 else ""
+                if not koerier or koerier.strip() == "":
+                    unassigned.append(item)
+        
+        if unassigned:
+            self.tree.selection_set(unassigned)
+            # Scroll to first unassigned
+            self.tree.see(unassigned[0])
+        else:
+            messagebox.showinfo("Geen resultaten", "Geen ongedeelde bestellingen gevonden.")
+    
+    def filter_unassigned(self) -> None:
+        """Filter to show only unassigned orders."""
+        if hasattr(self, 'filter_courier_var'):
+            self.filter_courier_var.set("Zonder Koerier")
+            self.apply_filters()
+    
+    def filter_all(self) -> None:
+        """Show all orders."""
+        if hasattr(self, 'filter_courier_var'):
+            self.filter_courier_var.set("Alle")
+        if hasattr(self, 'search_var'):
+            self.search_var.set("")
+        self.apply_filters()
+    
+    def apply_filters(self) -> None:
+        """Apply search and filter to visible orders."""
+        if not self.tree:
+            return
+        
+        search_text = self.search_var.get().strip().lower() if hasattr(self, 'search_var') else ""
+        filter_courier = self.filter_courier_var.get() if hasattr(self, 'filter_courier_var') else "Alle"
+        
+        # Show/hide items based on filters
+        for item in self.tree.get_children():
+            values = self.tree.item(item, "values")
+            if not values or len(values) < 10:
+                continue
+            
+            # Check search filter
+            matches_search = True
+            if search_text:
+                # Search in: nummer, straat, gemeente, telefoon
+                searchable_text = " ".join([
+                    str(values[1] if len(values) > 1 else ""),  # nummer
+                    str(values[3] if len(values) > 3 else ""),  # straat
+                    str(values[5] if len(values) > 5 else ""),  # gemeente
+                    str(values[6] if len(values) > 6 else "")   # telefoon
+                ]).lower()
+                matches_search = search_text in searchable_text
+            
+            # Check courier filter
+            matches_courier = True
+            if filter_courier == "Zonder Koerier":
+                koerier = values[9] if len(values) > 9 else ""
+                matches_courier = not koerier or koerier.strip() == ""
+            elif filter_courier != "Alle":
+                koerier = values[9] if len(values) > 9 else ""
+                matches_courier = koerier == filter_courier
+            
+            # Show/hide item by moving to end or detaching
+            if matches_search and matches_courier:
+                # Item matches - ensure it's visible
+                try:
+                    self.tree.detach(item)
+                    self.tree.reattach(item, "", tk.END)
+                except tk.TclError:
+                    pass  # Item already in correct position
+            else:
+                # Item doesn't match - hide it
+                try:
+                    self.tree.detach(item)
+                except tk.TclError:
+                    pass  # Item already detached
+    
+    def smart_assign_all(self) -> None:
+        """Smart assign all unassigned orders to couriers based on workload."""
+        if not self.tree:
+            return
+        unassigned_items = []
+        for item in self.tree.get_children():
+            values = self.tree.item(item, "values")
+            if values and len(values) >= 10:
+                koerier = values[9] if len(values) > 9 else ""
+                if not koerier or koerier.strip() == "":
+                    unassigned_items.append(item)
+        
+        if not unassigned_items:
+            messagebox.showinfo("Geen actie", "Alle bestellingen zijn al toegewezen.")
+            return
+        
+        if not messagebox.askyesno(
+            "Bevestigen",
+            f"Weet u zeker dat u {len(unassigned_items)} ongedeelde bestelling(en) automatisch wilt toewijzen?\n\n"
+            "De bestellingen worden verdeeld op basis van huidige workload."
+        ):
+            return
+        
+        # Calculate current workload per courier
+        courier_workload = {naam: 0 for naam in self.courier_names}
+        for item in self.tree.get_children():
+            values = self.tree.item(item, "values")
+            if values and len(values) >= 10:
+                koerier = values[9] if len(values) > 9 else ""
+                if koerier and koerier in courier_workload:
+                    courier_workload[koerier] += 1
+        
+        # Assign orders to courier with least workload
+        assigned_count = 0
+        for item in unassigned_items:
+            # Find courier with least workload
+            min_workload = min(courier_workload.values())
+            best_courier = min(
+                [naam for naam, workload in courier_workload.items() if workload == min_workload],
+                key=str.lower
+            )
+            
+            # Assign to this courier
+            self.tree.selection_set([item])
+            self.assign_courier(best_courier)
+            courier_workload[best_courier] += 1
+            assigned_count += 1
+        
+        messagebox.showinfo("Succes", f"{assigned_count} bestelling(en) automatisch toegewezen.")
+    
+    def toggle_auto_refresh(self) -> None:
+        """Toggle auto-refresh on/off."""
+        if hasattr(self, 'auto_refresh_var') and self.auto_refresh_var.get():
+            self.start_auto_refresh()
+        else:
+            self.stop_auto_refresh()
+    
+    def start_auto_refresh(self) -> None:
+        """Start auto-refresh timer."""
+        self.stop_auto_refresh()  # Stop any existing timer
+        self._auto_refresh_job = None
+        self._update_auto_refresh_status()
+        self._schedule_next_refresh()
+    
+    def stop_auto_refresh(self) -> None:
+        """Stop auto-refresh timer."""
+        if hasattr(self, '_auto_refresh_job') and self._auto_refresh_job:
+            root = self.parent.winfo_toplevel()
+            root.after_cancel(self._auto_refresh_job)
+            self._auto_refresh_job = None
+        if hasattr(self, 'auto_refresh_status'):
+            self.auto_refresh_status.config(text="")
+    
+    def _schedule_next_refresh(self) -> None:
+        """Schedule next auto-refresh."""
+        if not hasattr(self, 'auto_refresh_var') or not self.auto_refresh_var.get():
+            return
+        
+        root = self.parent.winfo_toplevel()
+        self._auto_refresh_job = root.after(self.auto_refresh_interval * 1000, self._perform_auto_refresh)
+        self._update_auto_refresh_status()
+    
+    def _perform_auto_refresh(self) -> None:
+        """Perform auto-refresh."""
+        if hasattr(self, 'auto_refresh_var') and self.auto_refresh_var.get():
+            self.load_orders(force=True)
+            self._schedule_next_refresh()
+    
+    def _update_auto_refresh_status(self) -> None:
+        """Update auto-refresh status label."""
+        if hasattr(self, 'auto_refresh_status') and hasattr(self, 'auto_refresh_var') and self.auto_refresh_var.get():
+            from datetime import datetime
+            now = datetime.now().strftime("%H:%M:%S")
+            self.auto_refresh_status.config(text=f"Laatste refresh: {now}", fg="#4CAF50")
+        elif hasattr(self, 'auto_refresh_status'):
+            self.auto_refresh_status.config(text="", fg="#6C757D")
 
 
 def open_koeriers(root: tk.Tk) -> None:

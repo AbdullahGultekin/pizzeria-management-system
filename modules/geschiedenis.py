@@ -5,7 +5,7 @@ This module provides a modern interface for viewing, searching, and managing ord
 """
 
 import tkinter as tk
-from tkinter import ttk, messagebox, simpledialog
+from tkinter import ttk, messagebox
 from typing import Dict, List, Optional, Any, Callable
 import json
 from datetime import date
@@ -407,40 +407,34 @@ class HistoryManager:
     
     def delete_all_orders(self) -> None:
         """Delete all orders after confirmation."""
+        # Show warning dialog - if user confirms, delete immediately
         if not messagebox.askyesno(
             "Alles verwijderen?",
-            "Weet u zeker dat u ALLE bestellingen permanent wilt verwijderen?\n"
-            "Dit kan niet ongedaan worden gemaakt.",
+            "Weet u zeker dat u ALLE bestellingen permanent wilt verwijderen?\n\n"
+            "Dit kan niet ongedaan worden gemaakt!",
             icon='warning',
             parent=self.parent
         ):
             return
         
-        confirm = simpledialog.askstring(
-            "Bevestig",
-            "Typ VERWIJDER ALLES om te bevestigen:",
-            parent=self.parent
-        )
-        
-        if (confirm or "").strip().upper() != "VERWIJDER ALLES":
-            messagebox.showinfo("Geannuleerd", "Verwijderen geannuleerd.", parent=self.parent)
-            return
-        
+        # User confirmed - delete all orders immediately
         try:
             klant_ids = self.service.delete_all_orders()
             
-            # Update customer statistics
+            # Update customer statistics if needed
             if klant_ids:
                 from database import update_klant_statistieken
-                for klant_id in set(klant_ids):
-                    if klant_id:
+                for klant_id in klant_ids:
+                    try:
                         update_klant_statistieken(klant_id)
+                    except Exception as e:
+                        logger.warning(f"Error updating statistics for customer {klant_id}: {e}")
             
-            messagebox.showinfo("Gereed", "Alle bestellingen zijn verwijderd.", parent=self.parent)
+            messagebox.showinfo("Succes", "Alle bestellingen zijn succesvol verwijderd.", parent=self.parent)
             self.refresh_data(force=True)
         except DatabaseError as e:
             logger.exception("Error deleting all orders")
-            messagebox.showerror("Fout", f"Kon alle bestellingen niet verwijderen: {e}", parent=self.parent)
+            messagebox.showerror("Fout", f"Kon bestellingen niet verwijderen: {e}", parent=self.parent)
     
     def _on_table_click(self, event) -> None:
         """Handle table click event."""

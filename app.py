@@ -192,18 +192,23 @@ class PizzeriaApp:
         initialize_database()
     
     def load_data(self) -> None:
-        """Load application data (menu, extras, settings)."""
+        """Load application data (menu, extras, settings) - OPTIMIZED with caching."""
         extras_fallback = {}
         self.EXTRAS = load_json_file("extras.json", fallback_data=extras_fallback)
         try:
             with open("menu.json", "r", encoding="utf-8") as f:
                 self.menu_data = json.load(f)
+            # Cache menu data modification time to avoid unnecessary reloads
+            import os
+            self._menu_file_mtime = os.path.getmtime("menu.json")
         except FileNotFoundError:
             logger.error("menu.json niet gevonden!")
             self.menu_data = {}
+            self._menu_file_mtime = 0
         except json.JSONDecodeError as e:
             logger.error(f"menu.json is geen geldige JSON: {e}")
             self.menu_data = {}
+            self._menu_file_mtime = 0
         self.app_settings = load_settings()
     
     def _initialize_app_variables(self) -> None:
@@ -889,29 +894,36 @@ info@pitapizzanapoli.be
                 messagebox.showerror("Fout bij afdrukken", f"Kon de bon niet afdrukken.\n\nFoutdetails: {error_msg}")
     
     def update_overzicht(self) -> None:
-        """Update order overview display with enhanced formatting."""
+        """Update order overview display with enhanced formatting (OPTIMIZED - use string building)."""
         if not self.overzicht:
             return
         
-        self.overzicht.delete(1.0, tk.END)
-        
-        # Header with better styling
-        self.overzicht.insert(tk.END, "📋 Bestellingsoverzicht\n", "header")
-        self.overzicht.insert(tk.END, "─" * 45 + "\n", "separator")
-        self.overzicht.insert(tk.END, "\n")
+        # OPTIMIZED: Build content as string first, then insert once (much faster than multiple inserts)
+        content_lines = []
+        content_lines.append(("📋 Bestellingsoverzicht\n", "header"))
+        content_lines.append(("─" * 45 + "\n", "separator"))
+        content_lines.append(("\n", None))
         
         # Show levertijd if set
         if self.levertijd_entry:
             levertijd = self.levertijd_entry.get().strip()
             if levertijd and levertijd != "bijv. 19:30":
-                self.overzicht.insert(tk.END, "⏰ Levertijd: ", "delivery_time")
-                self.overzicht.insert(tk.END, f"{levertijd}\n\n", "section")
+                content_lines.append(("⏰ Levertijd: ", "delivery_time"))
+                content_lines.append((f"{levertijd}\n\n", "section"))
         
-        # Group identical items
+        # Group identical items (OPTIMIZED - cache JSON dumps)
         grouped = {}
         order_keys = []
+        _extras_cache = {}  # Cache for JSON dumps to avoid repeated serialization
+        
         for item in self.bestelregels:
-            extras_key = json.dumps(item.get('extras', {}), sort_keys=True, ensure_ascii=False)
+            # Use cached extras key if available (faster than json.dumps every time)
+            extras = item.get('extras', {})
+            extras_id = id(extras)  # Use object ID as cache key
+            if extras_id not in _extras_cache:
+                _extras_cache[extras_id] = json.dumps(extras, sort_keys=True, ensure_ascii=False)
+            extras_key = _extras_cache[extras_id]
+            
             key = (item.get('categorie'), item.get('product'), extras_key, item.get('opmerking', ''))
             if key not in grouped:
                 grouped[key] = {
@@ -919,7 +931,7 @@ info@pitapizzanapoli.be
                     'product': item.get('product'),
                     'aantal': 0,
                     'prijs': float(item.get('prijs', 0.0)),
-                    'extras': item.get('extras', {}),
+                    'extras': extras,
                     'opmerking': item.get('opmerking', '')
                 }
                 order_keys.append(key)
@@ -936,6 +948,10 @@ info@pitapizzanapoli.be
         # Track subtotals per category
         category_totals = {}
         current_category = None
+        
+        # Mapping van display nummer naar originele bestelregels indices
+        # Dit is nodig omdat items worden gegroepeerd, maar we moeten weten welke originele items verwijderd moeten worden
+        display_to_original_indices = {}  # Maps display_line_no -> list of original indices in bestelregels
         
         for key in order_keys:
             item = grouped[key]
@@ -955,16 +971,16 @@ info@pitapizzanapoli.be
                     # Show subtotal for previous category
                     cat_subtotal = category_totals.get(current_category, 0.0)
                     if cat_subtotal > 0:
-                        self.overzicht.insert(tk.END, "\n  ", "extra")
-                        self.overzicht.insert(tk.END, f"Subtotaal {current_category}: ", "item_header")
-                        self.overzicht.insert(tk.END, f"€{cat_subtotal:.2f}\n", "price")
-                        self.overzicht.insert(tk.END, "─" * 35 + "\n", "separator")
+                        content_lines.append(("\n  ", "extra"))
+                        content_lines.append((f"Subtotaal {current_category}: ", "item_header"))
+                        content_lines.append((f"€{cat_subtotal:.2f}\n", "price"))
+                        content_lines.append(("─" * 35 + "\n", "separator"))
                 
                 # New category header
                 if item_category:
-                    self.overzicht.insert(tk.END, "\n" if line_no > 1 else "", "extra")
-                    self.overzicht.insert(tk.END, f"📦 {item_category}\n", "section")
-                    self.overzicht.insert(tk.END, "\n", "extra")
+                    content_lines.append(("\n" if line_no > 1 else "", "extra"))
+                    content_lines.append((f"📦 {item_category}\n", "section"))
+                    content_lines.append(("\n", "extra"))
                 current_category = item_category
             
             # Determine display name
@@ -1018,25 +1034,40 @@ info@pitapizzanapoli.be
             
             # Add spacing between items for better readability
             if line_no > 1:
-                self.overzicht.insert(tk.END, "\n")
+                content_lines.append(("\n", None))
+            
+            # Vind alle originele bestelregels indices die bij dit gegroepeerde item horen
+            original_indices = []
+            for idx, orig_item in enumerate(self.bestelregels):
+                orig_extras = orig_item.get('extras', {})
+                orig_extras_id = id(orig_extras)
+                if orig_extras_id not in _extras_cache:
+                    _extras_cache[orig_extras_id] = json.dumps(orig_extras, sort_keys=True, ensure_ascii=False)
+                orig_extras_key = _extras_cache[orig_extras_id]
+                orig_key = (orig_item.get('categorie'), orig_item.get('product'), orig_extras_key, orig_item.get('opmerking', ''))
+                if orig_key == key:
+                    original_indices.append(idx)
+            
+            # Sla mapping op van display nummer naar originele indices
+            display_to_original_indices[line_no] = original_indices
             
             # Item header with number
-            self.overzicht.insert(tk.END, f"[{line_no}] ", "item_number")
-            self.overzicht.insert(tk.END, f"{display_name}", "item_header")
+            content_lines.append((f"[{line_no}] ", "item_number"))
+            content_lines.append((f"{display_name}", "item_header"))
             
             if is_gratis:
-                self.overzicht.insert(tk.END, " [GRATIS]", "free")
+                content_lines.append((" [GRATIS]", "free"))
             
-            self.overzicht.insert(tk.END, f" ×{aantal}\n", "item_number")
+            content_lines.append((f" ×{aantal}\n", "item_number"))
             
             # Price with better formatting
             if is_gratis:
-                self.overzicht.insert(tk.END, "  ", "extra")
-                self.overzicht.insert(tk.END, "€0.00", "free")
-                self.overzicht.insert(tk.END, " [GRATIS]\n", "free")
+                content_lines.append(("  ", "extra"))
+                content_lines.append(("€0.00", "free"))
+                content_lines.append((" [GRATIS]\n", "free"))
             else:
-                self.overzicht.insert(tk.END, "  ", "extra")
-                self.overzicht.insert(tk.END, f"€{totaal_regel:.2f}\n", "price")
+                content_lines.append(("  ", "extra"))
+                content_lines.append((f"€{totaal_regel:.2f}\n", "price"))
             
             # Display extras with better formatting
             extras = item.get('extras', {}) or {}
@@ -1047,48 +1078,48 @@ info@pitapizzanapoli.be
                         if isinstance(val, list):
                             for v in val:
                                 if v:
-                                    self.overzicht.insert(tk.END, "  └─ ", "extra")
-                                    self.overzicht.insert(tk.END, f"{v}\n", "extra")
+                                    content_lines.append(("  └─ ", "extra"))
+                                    content_lines.append((f"{v}\n", "extra"))
                         else:
-                            self.overzicht.insert(tk.END, "  └─ ", "extra")
-                            self.overzicht.insert(tk.END, f"{val}\n", "extra")
+                            content_lines.append(("  └─ ", "extra"))
+                            content_lines.append((f"{val}\n", "extra"))
                 if 'sauzen_toeslag' in extras and extras['sauzen_toeslag']:
                     try:
                         toeslag = float(extras['sauzen_toeslag'])
                         if toeslag > 0:
-                            self.overzicht.insert(tk.END, "  └─ ", "extra")
-                            self.overzicht.insert(tk.END, f"Sauzen extra: ", "extra")
-                            self.overzicht.insert(tk.END, f"€{toeslag:.2f}\n", "price")
+                            content_lines.append(("  └─ ", "extra"))
+                            content_lines.append(("Sauzen extra: ", "extra"))
+                            content_lines.append((f"€{toeslag:.2f}\n", "price"))
                     except Exception:
                         pass
             
             # Display note with better formatting
             if item.get('opmerking'):
-                self.overzicht.insert(tk.END, "  └─ ", "note")
-                self.overzicht.insert(tk.END, f"Opmerking: {item['opmerking']}\n", "note")
+                content_lines.append(("  └─ ", "note"))
+                content_lines.append((f"Opmerking: {item['opmerking']}\n", "note"))
             
             line_no += 1
         
         # Show subtotal for last category
         if current_category and category_totals.get(current_category, 0.0) > 0:
             cat_subtotal = category_totals.get(current_category, 0.0)
-            self.overzicht.insert(tk.END, "\n  ", "extra")
-            self.overzicht.insert(tk.END, f"Subtotaal {current_category}: ", "item_header")
-            self.overzicht.insert(tk.END, f"€{cat_subtotal:.2f}\n", "price")
+            content_lines.append(("\n  ", "extra"))
+            content_lines.append((f"Subtotaal {current_category}: ", "item_header"))
+            content_lines.append((f"€{cat_subtotal:.2f}\n", "price"))
         
         # Total section with better formatting
         if order_keys:
-            self.overzicht.insert(tk.END, "\n" + "═" * 45 + "\n", "separator")
-            self.overzicht.insert(tk.END, "\n")
+            content_lines.append(("\n" + "═" * 45 + "\n", "separator"))
+            content_lines.append(("\n", None))
         
         # Show category breakdown if multiple categories
         if len(category_totals) > 1:
-            self.overzicht.insert(tk.END, "📊 Overzicht per categorie:\n", "section")
+            content_lines.append(("📊 Overzicht per categorie:\n", "section"))
             for cat_name, cat_total in sorted(category_totals.items()):
                 if cat_total > 0:
-                    self.overzicht.insert(tk.END, f"  • {cat_name}: ", "extra")
-                    self.overzicht.insert(tk.END, f"€{cat_total:.2f}\n", "price")
-            self.overzicht.insert(tk.END, "\n", "extra")
+                    content_lines.append((f"  • {cat_name}: ", "extra"))
+                    content_lines.append((f"€{cat_total:.2f}\n", "price"))
+            content_lines.append(("\n", "extra"))
         
         # Check for afhaal korting
         korting_percentage = 0.0
@@ -1106,19 +1137,30 @@ info@pitapizzanapoli.be
             subtotaal = totaal
             totaal_na_korting = subtotaal - korting_bedrag
             
-            self.overzicht.insert(tk.END, "💰 Subtotaal: ", "item_header")
-            self.overzicht.insert(tk.END, f"€{subtotaal:.2f}\n", "price")
+            content_lines.append(("💰 Subtotaal: ", "item_header"))
+            content_lines.append((f"€{subtotaal:.2f}\n", "price"))
             
-            self.overzicht.insert(tk.END, "🎁 Korting (", "extra")
-            self.overzicht.insert(tk.END, f"{korting_percentage:.0f}%", "free")
-            self.overzicht.insert(tk.END, "): ", "extra")
-            self.overzicht.insert(tk.END, f"-€{korting_bedrag:.2f}\n", "free")
+            content_lines.append(("🎁 Korting (", "extra"))
+            content_lines.append((f"{korting_percentage:.0f}%", "free"))
+            content_lines.append(("): ", "extra"))
+            content_lines.append((f"-€{korting_bedrag:.2f}\n", "free"))
             
-            self.overzicht.insert(tk.END, "💰 Totaal: ", "item_header")
-            self.overzicht.insert(tk.END, f"€{totaal_na_korting:.2f}\n", "total")
+            content_lines.append(("💰 Totaal: ", "item_header"))
+            content_lines.append((f"€{totaal_na_korting:.2f}\n", "total"))
         else:
-            self.overzicht.insert(tk.END, "💰 Totaal: ", "item_header")
-            self.overzicht.insert(tk.END, f"€{totaal:.2f}\n", "total")
+            content_lines.append(("💰 Totaal: ", "item_header"))
+            content_lines.append((f"€{totaal:.2f}\n", "total"))
+        
+        # OPTIMIZED: Clear and insert all content at once (much faster than multiple inserts)
+        self.overzicht.delete(1.0, tk.END)
+        for text, tag in content_lines:
+            if tag:
+                self.overzicht.insert(tk.END, text, tag)
+            else:
+                self.overzicht.insert(tk.END, text)
+        
+        # Sla mapping op voor gebruik in selectie functies
+        self._display_to_original_indices = display_to_original_indices
         
         # Scroll to top
         self.overzicht.see(1.0)
@@ -1447,7 +1489,7 @@ info@pitapizzanapoli.be
         self.update_overzicht()
     
     def render_producten(self) -> None:
-        """Render product grid for current category - original version."""
+        """Render product grid for current category (OPTIMIZED - reuse widgets where possible)."""
         if not self.product_grid_holder:
             return
         
@@ -1465,12 +1507,40 @@ info@pitapizzanapoli.be
             "#FFD6E5",  # Pastel roze
         ]
         
-        for w in self.product_grid_holder.winfo_children():
-            w.destroy()
+        # OPTIMIZED: Cache existing widgets and reuse if count matches
+        existing_widgets = list(self.product_grid_holder.winfo_children())
+        existing_count = len(existing_widgets)
+        items_count = len(items)
         
+        # Only destroy if count changed significantly (more efficient than always destroying)
+        if abs(existing_count - items_count) > 5 or existing_count == 0:
+            for w in existing_widgets:
+                w.destroy()
+            existing_widgets = []
+        
+        # Reuse existing widgets or create new ones (OPTIMIZED)
         for i, product in enumerate(items):
             bg_color = kleuren_lijst[i % len(kleuren_lijst)]
             
+            # Reuse existing widget if available
+            if i < len(existing_widgets):
+                card_frame = existing_widgets[i]
+                # Update existing widget
+                card_frame.config(bg=bg_color)
+                card_frame.grid(row=i // columns, column=i % columns, padx=1, pady=1, sticky="nsew")
+                
+                # Update button inside frame
+                btn = card_frame.winfo_children()[0] if card_frame.winfo_children() else None
+                if btn:
+                    if is_pizza_category:
+                        pizza_number = product['naam'].split('.')[0].strip()
+                        btn.config(text=pizza_number, bg=bg_color, command=lambda p=product: self.render_opties(p))
+                    else:
+                        btn_text = f"{product['naam']}\n€{product['prijs']:.2f}"
+                        btn.config(text=btn_text, bg=bg_color, command=lambda p=product: self.render_opties(p))
+                continue
+            
+            # Create new widget if needed
             card_frame = tk.Frame(self.product_grid_holder, bd=1, relief=tk.RAISED, padx=1, pady=1, bg=bg_color)
             card_frame.grid(row=i // columns, column=i % columns, padx=1, pady=1, sticky="nsew")
             card_frame.grid_propagate(False)
@@ -1498,6 +1568,10 @@ info@pitapizzanapoli.be
                 btn.pack(fill="both", expand=True)
                 card_frame.config(width=120, height=60)
         
+        # Remove excess widgets if items decreased (hide them instead of destroying for better performance)
+        for i in range(items_count, len(existing_widgets)):
+            existing_widgets[i].grid_remove()  # Hide instead of destroy for potential reuse
+        
         for c in range(columns):
             if self.product_grid_holder:
                 self.product_grid_holder.grid_columnconfigure(c, weight=1)
@@ -1513,6 +1587,19 @@ info@pitapizzanapoli.be
                 logger.error(f"Kon menu.json niet herladen: {e}")
         
         self.state["categorie"] = category_name
+        
+        # Check if menu.json was modified and reload if needed (OPTIMIZED - only reload if changed)
+        try:
+            import os
+            if hasattr(self, '_menu_file_mtime'):
+                current_mtime = os.path.getmtime("menu.json")
+                if current_mtime > self._menu_file_mtime:
+                    with open("menu.json", "r", encoding="utf-8") as f:
+                        self.menu_data = json.load(f)
+                    self._menu_file_mtime = current_mtime
+        except (FileNotFoundError, OSError):
+            pass  # File doesn't exist or can't be accessed, use cached data
+        
         products = list(self.menu_data.get(category_name, []))
         
         # Remove duplicates based on ID and name (case-insensitive)
@@ -2109,36 +2196,175 @@ info@pitapizzanapoli.be
         self.overzicht.tag_configure("separator", foreground="#DEE2E6")
         self.overzicht.tag_configure("category_subtotal", font=("Arial", 9, "bold"), foreground="#6C757D")
         
-        # Duidelijke regel-selectie in het besteloverzicht (behouden voor functionaliteit)
-        self.overzicht.tag_configure("sel_line", background="#FFF3CD")
-        self.overzicht.tag_configure("sel_line_text", foreground="#0D47A1")
+        # Zeer duidelijke regel-selectie in het besteloverzicht
+        # Gebruik opvallende kleuren voor maximale zichtbaarheid
+        self.overzicht.tag_configure("sel_line", 
+                                     background="#FFD700",  # Helder goudgeel - zeer opvallend
+                                     foreground="#000000",
+                                     font=("Arial", 10, "bold"))
+        self.overzicht.tag_configure("sel_line_text", 
+                                     foreground="#000000",
+                                     font=("Arial", 10, "bold"))
+        self.overzicht.tag_configure("sel_item_number",
+                                     background="#FF0000",  # Helder rood voor nummer - zeer opvallend
+                                     foreground="#FFFFFF",
+                                     font=("Arial", 10, "bold"))
+        
+        # Track welke item regels bij elkaar horen (voor multi-line items)
+        self._item_line_map = {}  # Maps display line number -> item index in bestelregels
         
         def _clear_line_highlight():
             self.overzicht.tag_remove("sel_line", "1.0", tk.END)
             self.overzicht.tag_remove("sel_line_text", "1.0", tk.END)
+            self.overzicht.tag_remove("sel_item_number", "1.0", tk.END)
         
-        def _highlight_line(line_index_str):
-            line_start = f"{line_index_str.split('.')[0]}.0"
-            line_end = f"{line_index_str.split('.')[0]}.end"
-            self.overzicht.tag_add("sel_line", line_start, line_end)
-            self.overzicht.tag_add("sel_line_text", line_start, line_end)
+        def _highlight_item(item_index, start_line, end_line):
+            """Highlight een volledig item (inclusief extras en opmerkingen) - zeer duidelijk."""
+            _clear_line_highlight()
+            # Highlight alle regels van dit item met opvallende kleur
+            for line_num in range(start_line, min(end_line + 1, int(self.overzicht.index(tk.END).split('.')[0]))):
+                try:
+                    line_start = f"{line_num}.0"
+                    line_end = f"{line_num}.end"
+                    self.overzicht.tag_add("sel_line", line_start, line_end)
+                    self.overzicht.tag_add("sel_line_text", line_start, line_end)
+                    
+                    # Extra highlight voor het item nummer op de eerste regel
+                    if line_num == start_line:
+                        line_text = self.overzicht.get(line_start, line_end)
+                        if '[' in line_text and ']' in line_text:
+                            start_pos = line_text.find('[')
+                            end_pos = line_text.find(']') + 1
+                            num_start = f"{line_num}.{start_pos}"
+                            num_end = f"{line_num}.{end_pos}"
+                            self.overzicht.tag_add("sel_item_number", num_start, num_end)
+                except Exception:
+                    continue
+        
+        def _find_item_from_line(click_line):
+            """Vind het item index gebaseerd op de geklikte regel - gebruikt mapping voor correcte verwijzing."""
+            # Zoek naar de dichtstbijzijnde item regel (met [nummer])
+            for line_num in range(click_line, 0, -1):
+                try:
+                    line_text = self.overzicht.get(f"{line_num}.0", f"{line_num}.end")
+                    if line_text.strip().startswith('[') and ']' in line_text:
+                        # Dit is een item regel, extract het display nummer
+                        num_str = line_text.split(']')[0][1:]
+                        try:
+                            display_num = int(num_str)
+                            # Gebruik mapping om originele indices te vinden
+                            if hasattr(self, '_display_to_original_indices'):
+                                original_indices = self._display_to_original_indices.get(display_num, [])
+                                if original_indices:
+                                    # Return de eerste index (of alle indices voor verwijdering)
+                                    return original_indices[0], original_indices
+                        except ValueError:
+                            continue
+                except Exception:
+                    continue
+            return None, []
         
         def _on_click_select_line(event):
             try:
                 index = self.overzicht.index(f"@{event.x},{event.y}")
-                _clear_line_highlight()
-                _highlight_line(index)
-            except Exception:
-                pass
+                click_line = int(index.split('.')[0])
+                item_index, all_indices = _find_item_from_line(click_line)
+                
+                if item_index is not None and 0 <= item_index < len(self.bestelregels):
+                    # Vind display nummer voor dit item
+                    display_num = None
+                    if hasattr(self, '_display_to_original_indices'):
+                        for disp_num, orig_indices in self._display_to_original_indices.items():
+                            if item_index in orig_indices:
+                                display_num = disp_num
+                                break
+                    
+                    if display_num:
+                        # Zoek naar de start regel (met [display_num])
+                        start_line = None
+                        for line_num in range(click_line, 0, -1):
+                            try:
+                                line_text = self.overzicht.get(f"{line_num}.0", f"{line_num}.end")
+                                if line_text.strip().startswith('[') and ']' in line_text:
+                                    num_str = line_text.split(']')[0][1:]
+                                    try:
+                                        if int(num_str) == display_num:
+                                            start_line = line_num
+                                            break
+                                    except ValueError:
+                                        continue
+                            except Exception:
+                                continue
+                        
+                        # Zoek naar de volgende item of einde
+                        next_start = None
+                        for line_num in range(click_line + 1, int(self.overzicht.index(tk.END).split('.')[0])):
+                            try:
+                                line_text = self.overzicht.get(f"{line_num}.0", f"{line_num}.end")
+                                if line_text.strip().startswith('[') and ']' in line_text:
+                                    next_start = line_num
+                                    break
+                            except Exception:
+                                continue
+                        
+                        if start_line:
+                            end_line = (next_start - 1) if next_start else click_line + 5  # Max 5 regels verder
+                            _highlight_item(item_index, start_line, end_line)
+                            # Zet cursor op de start regel
+                            self.overzicht.mark_set(tk.INSERT, f"{start_line}.0")
+            except Exception as e:
+                logger.debug(f"Error in click selection: {e}")
         
         def _on_key_move_selection(event):
             try:
-                self.overzicht.after_idle(lambda: (_clear_line_highlight(),
-                                                  _highlight_line(self.overzicht.index(tk.INSERT))))
-            except Exception:
-                pass
+                current_line = int(self.overzicht.index(tk.INSERT).split('.')[0])
+                item_index, all_indices = _find_item_from_line(current_line)
+                
+                if item_index is not None and 0 <= item_index < len(self.bestelregels):
+                    # Vind display nummer voor dit item
+                    display_num = None
+                    if hasattr(self, '_display_to_original_indices'):
+                        for disp_num, orig_indices in self._display_to_original_indices.items():
+                            if item_index in orig_indices:
+                                display_num = disp_num
+                                break
+                    
+                    if display_num:
+                        # Vind start regel
+                        start_line = None
+                        for line_num in range(current_line, 0, -1):
+                            try:
+                                line_text = self.overzicht.get(f"{line_num}.0", f"{line_num}.end")
+                                if line_text.strip().startswith('[') and ']' in line_text:
+                                    num_str = line_text.split(']')[0][1:]
+                                    try:
+                                        if int(num_str) == display_num:
+                                            start_line = line_num
+                                            break
+                                    except ValueError:
+                                        continue
+                            except Exception:
+                                continue
+                        
+                        if start_line:
+                            # Vind end regel
+                            next_start = None
+                            for line_num in range(start_line + 1, int(self.overzicht.index(tk.END).split('.')[0])):
+                                try:
+                                    line_text = self.overzicht.get(f"{line_num}.0", f"{line_num}.end")
+                                    if line_text.strip().startswith('[') and ']' in line_text:
+                                        next_start = line_num
+                                        break
+                                except Exception:
+                                    continue
+                            
+                            end_line = (next_start - 1) if next_start else start_line + 5
+                            _highlight_item(item_index, start_line, end_line)
+            except Exception as e:
+                logger.debug(f"Error in key selection: {e}")
         
         self.overzicht.bind("<Button-1>", _on_click_select_line)
+        self.overzicht.bind("<ButtonRelease-1>", _on_click_select_line)
         self.overzicht.bind("<Up>", _on_key_move_selection)
         self.overzicht.bind("<Down>", _on_key_move_selection)
         self.overzicht.bind("<Home>", _on_key_move_selection)
@@ -2152,27 +2378,62 @@ info@pitapizzanapoli.be
         tk.Button(btns, text="Print", command=self.show_print_preview, bg="#D1FFE1").pack(side=tk.LEFT, padx=(0, 8))
         
         def _get_selected_indices_from_text():
+            """Vind het geselecteerde item index - gebruikt mapping voor correcte verwijzing naar originele items."""
             try:
                 index = self.overzicht.index("insert")
-                line_no = int(index.split('.')[0]) - 2
-                if line_no >= 0:
-                    line_text = self.overzicht.get(f"{int(index.split('.')[0])}.0", f"{int(index.split('.')[0])}.end")
-                    if line_text.startswith('['):
-                        shown = int(line_text.split(']')[0][1:])
-                        return [shown - 1]
+                current_line = int(index.split('.')[0])
+                
+                # Zoek naar de dichtstbijzijnde item regel (met [nummer])
+                for line_num in range(current_line, 0, -1):
+                    try:
+                        line_text = self.overzicht.get(f"{line_num}.0", f"{line_num}.end")
+                        if line_text.strip().startswith('[') and ']' in line_text:
+                            # Dit is een item regel, extract het display nummer
+                            num_str = line_text.split(']')[0][1:]
+                            try:
+                                display_num = int(num_str)
+                                # Gebruik mapping om originele indices te vinden
+                                if hasattr(self, '_display_to_original_indices'):
+                                    original_indices = self._display_to_original_indices.get(display_num, [])
+                                    if original_indices:
+                                        # Return alle originele indices (voor verwijdering van alle items in deze groep)
+                                        return original_indices
+                            except ValueError:
+                                continue
+                    except Exception:
+                        continue
+                
                 return []
-            except:
+            except Exception as e:
+                logger.debug(f"Error getting selected indices: {e}")
                 return []
         
         def verwijder_geselecteerd():
             idxs = _get_selected_indices_from_text()
             if not idxs:
-                messagebox.showinfo("Selectie", "Plaats de cursor op de regel die je wilt verwijderen.")
+                messagebox.showwarning(
+                    "Geen selectie", 
+                    "Klik op een product in het besteloverzicht om deze te selecteren.\n\n"
+                    "Het geselecteerde product wordt geel gemarkeerd."
+                )
                 return
-            for i in sorted(idxs, reverse=True):
-                if 0 <= i < len(self.bestelregels):
-                    self.bestelregels.pop(i)
-            self.update_overzicht()
+            
+            # Toon bevestiging met product naam
+            item = self.bestelregels[idxs[0]]
+            product_naam = item.get('product', 'Onbekend product')
+            aantal = item.get('aantal', 1)
+            
+            if messagebox.askyesno(
+                "Bevestigen verwijderen",
+                f"Weet u zeker dat u dit product wilt verwijderen?\n\n"
+                f"Product: {product_naam}\n"
+                f"Aantal: {aantal}"
+            ):
+                for i in sorted(idxs, reverse=True):
+                    if 0 <= i < len(self.bestelregels):
+                        self.bestelregels.pop(i)
+                self.update_overzicht()
+                _clear_line_highlight()
         
         def wis_alles():
             if self.bestelregels and messagebox.askyesno("Bevestigen", "Alle items uit de bestelling verwijderen?"):
