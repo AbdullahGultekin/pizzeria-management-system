@@ -14,6 +14,8 @@ from logging_config import get_logger
 from exceptions import DatabaseError
 from modules.history_service import HistoryService
 from modules.history_ui import HistoryUI
+import threading
+from queue import Queue
 
 logger = get_logger("pizzeria.geschiedenis")
 
@@ -52,6 +54,10 @@ class HistoryManager:
         self.tree: Optional[ttk.Treeview] = None
         self.filter_vars: Dict[str, tk.Variable] = {}
         self.stats_vars: Optional[Dict[str, tk.StringVar]] = None
+        
+        # Threading support for background operations
+        self.data_queue = Queue()
+        self.loading_data = False
         
     def setup_ui(self) -> None:
         """Setup the main UI."""
@@ -235,59 +241,188 @@ class HistoryManager:
         add_hover_effect(delete_all_btn, "#8B0000")
     
     def refresh_data(self, force: bool = False) -> None:
-        """Refresh order data and update display."""
+        """Refresh order data and update display - uses async loading."""
         if not self.tree:
             return
         
-        # Clear tree
+        # Use async loading to prevent UI blocking
+        if not self.loading_data:
+            self.refresh_data_async(force)
+        else:
+            logger.debug("Data already loading, skipping...")
+    
+    def refresh_data_async(self, force: bool = False) -> None:
+        """Refresh data in background thread to prevent UI blocking."""
+        if not self.tree:
+            return
+        
+        self.loading_data = True
+        
+        # Show loading indicator
+        self._show_loading_indicator()
+        
+        def worker():
+            """Background thread worker for loading data with parallel queries."""
+            try:
+                # Get filter values (read from main thread before starting worker)
+                search_term = self.filter_vars.get("search", tk.StringVar()).get()
+                date_filter = self.filter_vars.get("date", tk.StringVar()).get()
+                
+                # Clean search term (remove placeholder)
+                if search_term == "Naam, telefoon of adres...":
+                    search_term = ""
+                
+                # Use ThreadPoolExecutor to run database queries in parallel
+                from concurrent.futures import ThreadPoolExecutor, as_completed
+                
+                orders = []
+                stats = {'count': 0, 'total': 0.0, 'average': 0.0}
+                errors = []
+                
+                def load_orders():
+                    """Load orders from database."""
+                    try:
+                        return ("orders", self.service.search_orders(
+                            search_term=search_term if search_term else None,
+                            date_filter=date_filter if date_filter else None
+                        ))
+                    except DatabaseError as e:
+                        return ("orders_error", str(e))
+                    except Exception as e:
+                        return ("orders_error", str(e))
+                
+                def load_statistics():
+                    """Load statistics from database."""
+                    try:
+                        return ("stats", self.service.get_statistics(
+                            search_term=search_term if search_term else None,
+                            date_filter=date_filter if date_filter else None
+                        ))
+                    except Exception as e:
+                        logger.warning(f"Error calculating statistics: {e}")
+                        return ("stats", {'count': 0, 'total': 0.0, 'average': 0.0})
+                
+                # Execute queries in parallel
+                with ThreadPoolExecutor(max_workers=2) as executor:
+                    futures = {
+                        executor.submit(load_orders): "orders",
+                        executor.submit(load_statistics): "stats"
+                    }
+                    
+                    for future in as_completed(futures):
+                        try:
+                            result = future.result()
+                            key, value = result
+                            if key.endswith("_error"):
+                                errors.append(value)
+                            elif key == "orders":
+                                orders = value
+                            elif key == "stats":
+                                stats = value
+                        except Exception as e:
+                            task_name = futures[future]
+                            logger.exception(f"Error in {task_name} query: {e}")
+                            errors.append(str(e))
+                
+                # If there were critical errors loading orders, report them
+                if errors and not orders:
+                    self.data_queue.put(("error", "; ".join(errors)))
+                    return
+                
+                # Put results in queue for main thread
+                self.data_queue.put(("success", {
+                    "orders": orders,
+                    "stats": stats
+                }))
+            except Exception as e:
+                logger.exception("Error loading data in background thread")
+                self.data_queue.put(("error", str(e)))
+            finally:
+                self.loading_data = False
+        
+        # Start background thread
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+        
+        # Check queue periodically for results
+        self._check_data_queue()
+    
+    def _show_loading_indicator(self) -> None:
+        """Show loading indicator in the orders table."""
+        if not self.tree:
+            return
+        
+        # Clear tree and show loading message
         for item in self.tree.get_children():
             self.tree.delete(item)
         
-        # Get filter values
-        search_term = self.filter_vars.get("search", tk.StringVar()).get()
-        date_filter = self.filter_vars.get("date", tk.StringVar()).get()
+        # Configure loading tag (always configure, it's safe to call multiple times)
+        self.tree.tag_configure("loading", background="#FFF9C4", foreground="#856404")
         
-        # Clean search term (remove placeholder)
-        if search_term == "Naam, telefoon of adres...":
-            search_term = ""
-        
-        # Get orders
+        # Insert loading message
+        loading_item = self.tree.insert("", "end", values=("Laden...", "", "", "", "", "", "", ""))
+        self.tree.item(loading_item, tags=("loading",))
+    
+    def _check_data_queue(self) -> None:
+        """Check for data from background thread and update UI."""
         try:
-            orders = self.service.search_orders(
-                search_term=search_term if search_term else None,
-                date_filter=date_filter if date_filter else None
-            )
-        except DatabaseError as e:
-            logger.exception("Error loading orders")
-            messagebox.showerror("Fout", str(e), parent=self.parent)
-            return
+            while True:
+                result_type, data = self.data_queue.get_nowait()
+                
+                if result_type == "success":
+                    # Update UI from main thread (thread-safe)
+                    orders = data["orders"]
+                    stats = data["stats"]
+                    
+                    # Clear tree
+                    for item in self.tree.get_children():
+                        self.tree.delete(item)
+                    
+                    # Add orders to tree with zebra striping
+                    for idx, order in enumerate(orders):
+                        adres = f"{order.get('straat', '')} {order.get('huisnummer', '')}".strip()
+                        tag = "even" if idx % 2 == 0 else "odd"
+                        
+                        levertijd = order.get('levertijd', '') or ''
+                        
+                        self.tree.insert(
+                            "",
+                            "end",
+                            iid=order['id'],
+                            values=(
+                                order['datum'],
+                                order['tijd'],
+                                order['bonnummer'],
+                                order.get('naam', ''),
+                                order.get('telefoon', ''),
+                                adres,
+                                levertijd,
+                                f"€{order['totaal']:.2f}"
+                            ),
+                            tags=(tag,)
+                        )
+                    
+                    # Update statistics
+                    if self.stats_vars:
+                        self.stats_vars['count'].set(str(int(stats.get('count', 0))))
+                        self.stats_vars['total'].set(f"€{stats.get('total', 0):.2f}")
+                        self.stats_vars['average'].set(f"€{stats.get('average', 0):.2f}")
+                    
+                    logger.debug("Data loaded successfully in background")
+                elif result_type == "error":
+                    logger.error(f"Error loading data: {data}")
+                    # Show error in UI (from main thread)
+                    self.parent.after(0, lambda: messagebox.showerror(
+                        "Fout",
+                        str(data),
+                        parent=self.parent
+                    ))
+        except:
+            pass  # Queue empty
         
-        # Add orders to tree with zebra striping
-        for idx, order in enumerate(orders):
-            adres = f"{order.get('straat', '')} {order.get('huisnummer', '')}".strip()
-            tag = "even" if idx % 2 == 0 else "odd"
-            
-            levertijd = order.get('levertijd', '') or ''
-            
-            self.tree.insert(
-                "",
-                "end",
-                iid=order['id'],
-                values=(
-                    order['datum'],
-                    order['tijd'],
-                    order['bonnummer'],
-                    order.get('naam', ''),
-                    order.get('telefoon', ''),
-                    adres,
-                    levertijd,
-                    f"€{order['totaal']:.2f}"
-                ),
-                tags=(tag,)
-            )
-        
-        # Update statistics
-        self.update_statistics(search_term, date_filter)
+        # Continue checking if still loading
+        if self.loading_data:
+            self.parent.after(100, self._check_data_queue)
     
     def update_statistics(self, search_term: Optional[str] = None, date_filter: Optional[str] = None) -> None:
         """Update statistics panel."""

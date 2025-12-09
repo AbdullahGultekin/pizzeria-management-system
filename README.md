@@ -39,17 +39,35 @@ A comprehensive desktop application for managing pizzeria operations including o
 
 ## Installation
 
+### Quick Start (Windows - Exe)
+
+1. Download de nieuwste release van [GitHub Releases](https://github.com/AbdullahGultekin/pizzeria-management-system/releases)
+2. Pak het zip bestand uit
+3. Dubbelklik op `main.exe` - **Klaar!** 🎉
+
+**Geen Python installatie nodig!**
+
+### Van Broncode
+
 1. Clone or download this repository
 
-2. Install dependencies:
+2. **Windows:** Run setup script:
 ```bash
-pip install -r requirements.txt
+scripts\setup_windows.bat
 ```
 
-3. For Windows printer support (optional):
+**Of handmatig:**
 ```bash
-pip install pywin32
+pip install -r requirements.txt
+pip install pywin32  # Voor Windows printer support
 ```
+
+3. Start de applicatie:
+```bash
+python main.py
+```
+
+📖 **Zie [PC Installatie Gids](docs/PC_INSTALLATIE_GUIDE.md) voor volledige instructies**
 
 ## Configuration
 

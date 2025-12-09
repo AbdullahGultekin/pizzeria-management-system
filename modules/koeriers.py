@@ -19,6 +19,9 @@ from modules.courier_config import (
 from modules.courier_service import CourierService
 from modules.courier_ui import CourierUI
 import requests
+import threading
+from queue import Queue
+from utils.cache import ThreadSafeCache
 
 logger = get_logger("pizzeria.koeriers")
 
@@ -66,6 +69,14 @@ class CourierManager:
         self.api_base_url = "http://localhost:8000/api/v1"
         self.api_token = None
         self.api_session = requests.Session()
+        
+        # Thread-safe cache for online orders (5 minute TTL)
+        self._online_orders_cache = ThreadSafeCache(max_size=50, default_ttl=300)
+        self._cached_online_orders = []  # Keep for backward compatibility
+        
+        # Threading support for background operations
+        self.data_queue = Queue()
+        self.loading_orders = False
     
     def load_couriers(self, force: bool = False) -> None:
         """Load couriers from database and initialize variables."""
@@ -1035,17 +1046,301 @@ class CourierManager:
         if not self.tree:
             return
         
-        # Clear tree (OPTIMIZED - faster clearing)
-        children = self.tree.get_children()
-        if children:
-            self.tree.delete(*children)
+        # Use async loading to prevent UI blocking
+        if not self.loading_orders:
+            self.load_orders_async(force)
+        else:
+            logger.debug("Orders already loading, skipping...")
+    
+    def load_orders_async(self, force: bool = False) -> None:
+        """Load orders in background thread to prevent UI blocking."""
+        if not self.tree:
+            return
         
-        # Get date
-        datum_str = self.filter_vars.get("datum", tk.StringVar(value=date.today().strftime('%Y-%m-%d'))).get()
+        self.loading_orders = True
+        
+        # Show loading indicator
+        self._show_loading_indicator()
+        
+        def worker():
+            """Background thread worker for loading orders with parallel queries."""
+            try:
+                # Get filter values (read from main thread before starting worker)
+                datum_str = self.filter_vars.get("datum", tk.StringVar(value=date.today().strftime('%Y-%m-%d'))).get()
+                try:
+                    order_date = datetime.strptime(datum_str, '%Y-%m-%d').date()
+                except ValueError:
+                    order_date = date.today()
+                
+                # Use ThreadPoolExecutor to run database query and API call in parallel
+                from concurrent.futures import ThreadPoolExecutor, as_completed
+                
+                orders = []
+                online_orders = []
+                errors = []
+                
+                def load_local_orders():
+                    """Load local orders from database."""
+                    try:
+                        return ("orders", self.service.get_orders_for_date(
+                            order_date, 
+                            exclude_afhaal=True
+                        ))
+                    except DatabaseError as e:
+                        return ("orders_error", str(e))
+                    except Exception as e:
+                        return ("orders_error", str(e))
+                
+                def load_online_orders():
+                    """Load online orders from API with thread-safe caching."""
+                    try:
+                        # Generate cache key from date
+                        cache_key = f"online_orders_{order_date.isoformat()}"
+                        
+                        # Try to get from cache first
+                        cached_result = self._online_orders_cache.get(cache_key)
+                        if cached_result is not None:
+                            logger.debug(f"Using cached online orders for {order_date}")
+                            result = cached_result
+                        else:
+                            # Fetch from API
+                            result = self.fetch_online_orders(order_date)
+                            # Cache for 5 minutes
+                            self._online_orders_cache.set(cache_key, result, ttl=300)
+                        
+                        self._cached_online_orders = result  # Keep for backward compatibility
+                        return ("online_orders", result)
+                    except Exception as e:
+                        logger.debug(f"Error fetching online orders: {e}")
+                        self._cached_online_orders = []
+                        return ("online_orders", [])
+                
+                # Execute queries in parallel
+                with ThreadPoolExecutor(max_workers=2) as executor:
+                    futures = {
+                        executor.submit(load_local_orders): "local",
+                        executor.submit(load_online_orders): "online"
+                    }
+                    
+                    for future in as_completed(futures):
+                        try:
+                            result = future.result()
+                            key, value = result
+                            if key.endswith("_error"):
+                                errors.append(value)
+                            elif key == "orders":
+                                orders = value
+                            elif key == "online_orders":
+                                online_orders = value
+                        except Exception as e:
+                            task_name = futures[future]
+                            logger.exception(f"Error in {task_name} query: {e}")
+                            errors.append(str(e))
+                
+                # If there were critical errors, report them
+                if errors and not orders:
+                    self.data_queue.put(("error", "; ".join(errors)))
+                    return
+                
+                # Put results in queue for main thread
+                self.data_queue.put(("success", {
+                    "orders": orders,
+                    "online_orders": online_orders,
+                    "order_date": order_date
+                }))
+            except Exception as e:
+                logger.exception("Error loading orders in background thread")
+                self.data_queue.put(("error", str(e)))
+            finally:
+                self.loading_orders = False
+        
+        # Start background thread
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+        
+        # Check queue periodically for results
+        self._check_orders_queue()
+    
+    def _show_loading_indicator(self) -> None:
+        """Show loading indicator in the orders table."""
+        if not self.tree:
+            return
+        
+        # Clear tree and show loading message
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+        
+        # Configure loading tag (always configure, it's safe to call multiple times)
+        self.tree.tag_configure("loading", background="#FFF9C4", foreground="#856404")
+        
+        # Insert loading message
+        loading_item = self.tree.insert("", "end", values=("Laden...", "", "", "", "", "", "", "", "", ""))
+        self.tree.item(loading_item, tags=("loading",))
+    
+    def _check_orders_queue(self) -> None:
+        """Check for orders data from background thread and update UI."""
         try:
-            order_date = datetime.strptime(datum_str, '%Y-%m-%d').date()
-        except ValueError:
-            order_date = date.today()
+            while True:
+                result_type, data = self.data_queue.get_nowait()
+                
+                if result_type == "success":
+                    # Update UI from main thread (thread-safe)
+                    orders = data["orders"]
+                    online_orders = data["online_orders"]
+                    order_date = data["order_date"]
+                    
+                    # Clear tree
+                    for item in self.tree.get_children():
+                        self.tree.delete(item)
+                    
+                    # Process and add orders to tree
+                    self._add_orders_to_tree(orders, online_orders, order_date)
+                    
+                    # Apply filters
+                    if hasattr(self, 'search_var') and hasattr(self, 'filter_courier_var'):
+                        self.apply_filters()
+                    
+                    # Recalculate totals
+                    if hasattr(self, 'totals_var') and self.totals_var:
+                        try:
+                            self.recalculate_courier_totals()
+                            self.recalculate_total_payment()
+                        except Exception as e:
+                            logger.exception("Error in totals recalculation")
+                    
+                    # Update courier cards
+                    if hasattr(self, 'courier_cards_frame'):
+                        self.render_courier_cards()
+                    
+                    logger.debug("Orders loaded successfully in background")
+                elif result_type == "error":
+                    logger.error(f"Error loading orders: {data}")
+                    # Show error in UI (from main thread)
+                    self.parent.after(0, lambda: messagebox.showerror(
+                        "Fout",
+                        f"Fout bij laden bestellingen: {data}",
+                        parent=self.parent
+                    ))
+        except:
+            pass  # Queue empty
+        
+        # Continue checking if still loading
+        if self.loading_orders:
+            self.parent.after(100, self._check_orders_queue)
+    
+    def _add_orders_to_tree(self, orders: List[Dict], online_orders: List[Dict], order_date: date) -> None:
+        """Add orders to tree (called from main thread)."""
+        if not self.tree:
+            return
+        
+        # Convert online orders to same format
+        online_orders_cache = {}
+        for online_order in online_orders:
+            if online_order.get('afhaal') or online_order.get('betaalmethode') == 'pickup':
+                continue
+            
+            # Parse address from online order
+            klant_adres = online_order.get('klant_adres', '')
+            straat = ''
+            huisnummer = ''
+            plaats = ''
+            if klant_adres:
+                parts = klant_adres.split(',')
+                if len(parts) >= 1:
+                    address_part = parts[0].strip()
+                    address_words = address_part.split()
+                    if len(address_words) > 1:
+                        straat = ' '.join(address_words[:-1])
+                        huisnummer = address_words[-1]
+                if len(parts) >= 2:
+                    plaats = parts[1].strip()
+            
+            # Parse plaats to get gemeente
+            gemeente = ""
+            if plaats:
+                plaats_parts = plaats.split()
+                if len(plaats_parts) > 1:
+                    gemeente = ' '.join(plaats_parts[1:])
+                else:
+                    gemeente = plaats
+            
+            order_dict = {
+                'id': f"online_{online_order['id']}",
+                'datum': order_date.strftime('%Y-%m-%d'),
+                'tijd': online_order.get('tijd', ''),
+                'straat': straat,
+                'huisnummer': huisnummer,
+                'plaats': plaats,
+                'telefoon': online_order.get('klant_telefoon', ''),
+                'totaal': online_order.get('totaal', 0),
+                'koerier_naam': self.get_courier_name_by_id(online_order.get('koerier_id')),
+                'online': True,
+                'vertrek': online_order.get('levertijd', '')
+            }
+            orders.append(order_dict)
+            online_orders_cache[online_order['id']] = online_order
+        
+        # Add orders to tree (OPTIMIZED - batch insert)
+        items_to_insert = []
+        for idx, order in enumerate(orders):
+            koerier_naam = order.get('koerier_naam') or ""
+            base_tag = "row_a" if idx % 2 == 0 else "row_b"
+            
+            if koerier_naam:
+                tag = f"koerier_{koerier_naam.replace(' ', '_')}"
+                tags = (tag,)
+            else:
+                tags = (base_tag, "unassigned")
+                if order.get('online'):
+                    tags = tags + ("online",)
+            
+            # Determine order number and type
+            if order.get('online'):
+                soort = "Online"
+                nummer = str(order['id']).replace("online_", "")
+            else:
+                soort = "Kassa"
+                nummer = str(order.get('id', ''))
+            
+            # Parse plaats to get gemeente
+            gemeente = ""
+            plaats = order.get('plaats', '')
+            if plaats:
+                parts = plaats.split(' ', 1)
+                if len(parts) > 1:
+                    gemeente = parts[1]
+                else:
+                    gemeente = parts[0]
+            
+            telefoon = order.get('telefoon', '')
+            totaal_str = f"€ {order.get('totaal', 0):,.2f}".replace(',', ' ').replace('.', ',')
+            
+            # Get vertrek time
+            vertrek = order.get('vertrek', '') or ''
+            
+            koerier_display = koerier_naam if koerier_naam else ""
+            
+            item_id = order['id'] if isinstance(order['id'], str) else str(order['id'])
+            items_to_insert.append((
+                item_id,
+                (
+                    soort,
+                    nummer,
+                    totaal_str,
+                    order.get('straat', ''),
+                    order.get('huisnummer', ''),
+                    gemeente,
+                    telefoon,
+                    order.get('tijd', ''),
+                    vertrek,
+                    koerier_display
+                ),
+                tags
+            ))
+        
+        # Batch insert all items at once
+        for item_id, values, tags in items_to_insert:
+            self.tree.insert("", tk.END, iid=item_id, values=values, tags=tags)
         
         # Get orders (exclude afhaal orders, only delivery orders)
         try:

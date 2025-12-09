@@ -3,6 +3,8 @@ from tkinter import ttk, Entry, StringVar
 from typing import List
 import database
 from database import DatabaseContext
+import threading
+from queue import Queue
 
 
 def open_klanten_zoeken(
@@ -44,19 +46,78 @@ def open_klanten_zoeken(
     tree.configure(yscrollcommand=scrollbar.set)
     scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
+    # Threading support for async search
+    search_queue = Queue()
+    searching = False
+    search_lock = threading.Lock()
+
     def update_zoekresultaten(*_: str) -> None:
+        """Update search results - uses async loading to prevent UI blocking."""
         term = zoek_var.get().strip()
         tree.delete(*tree.get_children())
+        
         if not term:
             return
-        with DatabaseContext() as conn:
-            cur = conn.execute(
-                "SELECT id, telefoon, naam, straat, huisnummer FROM klanten WHERE telefoon LIKE ?",
-                (f"%{term}%",)
-            )
-            for r in cur.fetchall():
-                adres = f"{r['straat'] or ''} {r['huisnummer'] or ''}".strip()
-                tree.insert("", "end", iid=str(r['id']), values=(r['telefoon'], r['naam'] or "", adres))
+        
+        # Use async search to prevent UI blocking
+        def search_worker():
+            """Background thread worker for database search."""
+            try:
+                with DatabaseContext() as conn:
+                    cur = conn.execute(
+                        "SELECT id, telefoon, naam, straat, huisnummer FROM klanten WHERE telefoon LIKE ?",
+                        (f"%{term}%",)
+                    )
+                    results = []
+                    for r in cur.fetchall():
+                        adres = f"{r['straat'] or ''} {r['huisnummer'] or ''}".strip()
+                        results.append((str(r['id']), r['telefoon'], r['naam'] or "", adres))
+                    
+                    # Put results in queue for main thread
+                    search_queue.put(("success", results))
+            except Exception as e:
+                search_queue.put(("error", str(e)))
+            finally:
+                with search_lock:
+                    nonlocal searching
+                    searching = False
+        
+        # Start search in background thread
+        with search_lock:
+            if searching:
+                return  # Already searching
+            searching = True
+        
+        thread = threading.Thread(target=search_worker, daemon=True)
+        thread.start()
+        
+        # Check queue for results
+        check_search_queue()
+    
+    def check_search_queue():
+        """Check for search results from background thread."""
+        try:
+            while True:
+                result_type, data = search_queue.get_nowait()
+                
+                if result_type == "success":
+                    # Update UI from main thread (thread-safe)
+                    # Clear tree first
+                    tree.delete(*tree.get_children())
+                    
+                    # Add results
+                    for item_id, telefoon, naam, adres in data:
+                        tree.insert("", "end", iid=item_id, values=(telefoon, naam, adres))
+                elif result_type == "error":
+                    # Show error (optional - can be silent for search)
+                    pass
+        except:
+            pass  # Queue empty
+        
+        # Continue checking if still searching
+        with search_lock:
+            if searching:
+                top.after(100, check_search_queue)
 
     def selecteer_klant_en_sluit() -> None:
         sel = tree.selection()

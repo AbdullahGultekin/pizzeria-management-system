@@ -3,6 +3,7 @@ import csv
 import os
 import json
 import datetime
+import threading
 from typing import Optional, Dict, Any, List
 from logging_config import setup_logging, get_logger
 from exceptions import DatabaseError
@@ -16,12 +17,21 @@ DB_FILE = "pizzeria.db"
 # Timeout for database operations (in seconds)
 DB_TIMEOUT = 20.0
 
+# Connection pool for SQLite (simple implementation)
+# Note: SQLite works best with separate connections per thread
+# This pool helps with connection reuse within the same thread
+_connection_pool = {}
+_pool_lock = threading.Lock()
+_max_pool_size = 5
+
 
 def get_db_connection() -> sqlite3.Connection:
     """
     Maakt een databaseconnectie aan en retourneert deze.
     
     Uses timeout to prevent database locking issues.
+    For SQLite, we create a new connection per operation (not pooled) 
+    because SQLite connections should not be shared between threads.
     
     Returns:
         SQLite database connection
@@ -30,14 +40,47 @@ def get_db_connection() -> sqlite3.Connection:
         DatabaseError: If connection cannot be established
     """
     try:
-        conn = sqlite3.connect(DB_FILE, timeout=DB_TIMEOUT)
+        # Create new connection (SQLite connections should not be shared between threads)
+        # Each DatabaseContext will create and close its own connection
+        conn = sqlite3.connect(DB_FILE, timeout=DB_TIMEOUT, check_same_thread=False)
         conn.row_factory = sqlite3.Row
         # Enable WAL mode for better concurrency
         conn.execute("PRAGMA journal_mode=WAL")
+        # Optimize for read-heavy workloads
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA cache_size=-64000")  # 64MB cache
+        conn.execute("PRAGMA temp_store=MEMORY")
+        
         return conn
     except sqlite3.Error as e:
         logger.exception(f"Database connection error: {e}")
         raise DatabaseError(f"Kon geen databaseverbinding maken: {e}") from e
+
+
+def close_connection_pool():
+    """Close all connections in the pool (useful for cleanup)."""
+    with _pool_lock:
+        for thread_id, conn in list(_connection_pool.items()):
+            try:
+                conn.close()
+            except:
+                pass
+        _connection_pool.clear()
+
+
+def get_connection_pool_stats() -> Dict[str, Any]:
+    """
+    Get statistics about the connection pool.
+    
+    Returns:
+        Dictionary with pool statistics
+    """
+    with _pool_lock:
+        return {
+            "pool_size": len(_connection_pool),
+            "max_pool_size": _max_pool_size,
+            "thread_ids": list(_connection_pool.keys())
+        }
 
 
 class DatabaseContext:
@@ -52,11 +95,19 @@ class DatabaseContext:
     
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self.conn:
-            if exc_type:
-                self.conn.rollback()
-            else:
-                self.conn.commit()
-            self.conn.close()
+            try:
+                if exc_type:
+                    self.conn.rollback()
+                else:
+                    self.conn.commit()
+            except sqlite3.Error:
+                # Connection might already be closed, ignore
+                pass
+            finally:
+                try:
+                    self.conn.close()
+                except:
+                    pass
         return False  # Don't suppress exceptions
 
 

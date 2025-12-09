@@ -11,6 +11,8 @@ from typing import Dict, List, Optional, Any, Tuple
 import json
 import datetime
 import platform
+import threading
+from queue import Queue
 
 # Optional QR code support
 try:
@@ -49,6 +51,7 @@ from validation import (
 from utils.menu_utils import get_pizza_num, load_menu_categories
 from utils.print_utils import open_printer_settings, open_footer_settings, show_print_preview as utils_show_print_preview
 from utils.address_utils import suggest_straat, on_adres_entry, selectie_suggestie, update_straatnamen_json
+from utils.cache import ThreadSafeCache
 from ui.customer_form_enhanced import EnhancedCustomerForm
 from ui.tab_manager import TabManager
 from ui.menu_grids import ModernMenuGrids
@@ -72,7 +75,7 @@ class PizzeriaApp:
     """
     
     # Application version
-    VERSION = "1.0.0"
+    VERSION = "1.1.0"
     
     # Constants
     SETTINGS_FILE = "settings.json"
@@ -185,14 +188,24 @@ class PizzeriaApp:
         self.tabs_map: Dict[str, Dict[str, Any]] = {}
         self.tab_manager: Optional[TabManager] = None
         
-        # Load application data
+        # Threading support for background operations
+        self.data_queue = Queue()
+        self.loading_data = False
+        
+        # Thread-safe cache for menu data (1 hour TTL)
+        self._menu_cache = ThreadSafeCache(max_size=10, default_ttl=3600)
+        self._extras_cache = ThreadSafeCache(max_size=10, default_ttl=3600)
+        self._settings_cache = ThreadSafeCache(max_size=5, default_ttl=1800)  # 30 min
+        
+        # Load application data synchronously during init (before UI is created)
+        # Async loading will be used later when UI is ready
         self.load_data()
         
         # Initialize database
         initialize_database()
     
     def load_data(self) -> None:
-        """Load application data (menu, extras, settings) - OPTIMIZED with caching."""
+        """Load application data (menu, extras, settings) - Synchronous version."""
         extras_fallback = {}
         self.EXTRAS = load_json_file("extras.json", fallback_data=extras_fallback)
         try:
@@ -210,6 +223,149 @@ class PizzeriaApp:
             self.menu_data = {}
             self._menu_file_mtime = 0
         self.app_settings = load_settings()
+    
+    def load_data_async(self) -> None:
+        """Load application data in background thread with parallel file I/O."""
+        if self.loading_data:
+            return  # Already loading
+        
+        if not hasattr(self, 'root') or not self.root:
+            # Fallback to synchronous if root doesn't exist
+            self.load_data()
+            return
+        
+        self.loading_data = True
+        
+        def worker():
+            """Background thread worker for loading data with parallel file I/O."""
+            try:
+                # Use threading to load files in parallel
+                from concurrent.futures import ThreadPoolExecutor, as_completed
+                
+                results = {}
+                errors = {}
+                
+                def load_extras():
+                    """Load extras.json in parallel."""
+                    try:
+                        extras_fallback = {}
+                        return ("extras", load_json_file("extras.json", fallback_data=extras_fallback))
+                    except Exception as e:
+                        return ("extras_error", str(e))
+                
+                def load_menu():
+                    """Load menu.json in parallel."""
+                    try:
+                        menu_data = {}
+                        menu_mtime = 0
+                        import os
+                        with open("menu.json", "r", encoding="utf-8") as f:
+                            menu_data = json.load(f)
+                        menu_mtime = os.path.getmtime("menu.json")
+                        return ("menu_data", menu_data), ("menu_mtime", menu_mtime)
+                    except FileNotFoundError:
+                        logger.error("menu.json niet gevonden!")
+                        return ("menu_data", {}), ("menu_mtime", 0)
+                    except json.JSONDecodeError as e:
+                        logger.error(f"menu.json is geen geldige JSON: {e}")
+                        return ("menu_data", {}), ("menu_mtime", 0)
+                    except Exception as e:
+                        return ("menu_error", str(e))
+                
+                def load_settings_parallel():
+                    """Load settings.json in parallel."""
+                    try:
+                        return ("settings", load_settings())
+                    except Exception as e:
+                        return ("settings_error", str(e))
+                
+                # Execute file loading in parallel using ThreadPoolExecutor
+                with ThreadPoolExecutor(max_workers=3) as executor:
+                    futures = {
+                        executor.submit(load_extras): "extras",
+                        executor.submit(load_menu): "menu",
+                        executor.submit(load_settings_parallel): "settings"
+                    }
+                    
+                    for future in as_completed(futures):
+                        try:
+                            result = future.result()
+                            if isinstance(result, tuple):
+                                # Handle menu result (returns 2 tuples)
+                                if len(result) == 2 and isinstance(result[0], tuple):
+                                    results[result[0][0]] = result[0][1]
+                                    results[result[1][0]] = result[1][1]
+                                else:
+                                    # Single result
+                                    key, value = result
+                                    if key.endswith("_error"):
+                                        errors[key] = value
+                                    else:
+                                        results[key] = value
+                        except Exception as e:
+                            task_name = futures[future]
+                            logger.exception(f"Error loading {task_name}: {e}")
+                            errors[f"{task_name}_error"] = str(e)
+                
+                # Put results in queue for main thread
+                if errors:
+                    logger.warning(f"Some files failed to load: {errors}")
+                
+                self.data_queue.put(("success", {
+                    "extras": results.get("extras", {}),
+                    "menu_data": results.get("menu_data", {}),
+                    "menu_mtime": results.get("menu_mtime", 0),
+                    "settings": results.get("settings", {})
+                }))
+            except Exception as e:
+                logger.exception("Error loading data in background thread")
+                self.data_queue.put(("error", str(e)))
+            finally:
+                self.loading_data = False
+        
+        # Start background thread
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+        
+        # Check queue periodically for results
+        self._check_data_queue()
+    
+    def _check_data_queue(self) -> None:
+        """Check for data from background thread and update UI."""
+        try:
+            while True:
+                result_type, data = self.data_queue.get_nowait()
+                
+                if result_type == "success":
+                    # Update data from main thread (thread-safe)
+                    self.EXTRAS = data["extras"]
+                    self.menu_data = data["menu_data"]
+                    self._menu_file_mtime = data["menu_mtime"]
+                    self.app_settings = data["settings"]
+                    logger.info("Data loaded successfully in background")
+                    
+                    # Update UI if needed
+                    if hasattr(self, 'tab_manager') and self.tab_manager:
+                        # Refresh menu if menu tab is active
+                        self.root.after(0, self._on_data_loaded)
+                elif result_type == "error":
+                    logger.error(f"Error loading data: {data}")
+                    # Show error in UI (from main thread)
+                    self.root.after(0, lambda: messagebox.showerror(
+                        "Fout",
+                        f"Fout bij laden data: {data}"
+                    ))
+        except:
+            pass  # Queue empty
+        
+        # Continue checking if still loading
+        if self.loading_data:
+            self.root.after(100, self._check_data_queue)
+    
+    def _on_data_loaded(self) -> None:
+        """Callback when data is loaded - refresh UI if needed."""
+        # This can be overridden or extended to refresh UI components
+        pass
     
     def _initialize_app_variables(self) -> None:
         """Initialize Tkinter control variables."""
@@ -1748,6 +1904,9 @@ info@pitapizzanapoli.be
             categories = load_menu_categories()
             if categories:
                 self.root.after(100, lambda: self.on_select_categorie(categories[0]))
+        
+        # Check for updates on startup (in background, non-blocking)
+        self._check_updates_on_startup()
     
     def setup_menu_bar(self) -> None:
         """Setup the application menu bar."""
@@ -1774,6 +1933,11 @@ info@pitapizzanapoli.be
         help_menu = tk.Menu(self.menubar, tearoff=0)
         self.menubar.add_cascade(label="Help", menu=help_menu)
         help_menu.add_command(label="Sneltoetsen", command=self.show_keyboard_shortcuts)
+        help_menu.add_separator()
+        help_menu.add_command(
+            label="Controleren op Updates...",
+            command=lambda: self.check_for_updates_manual()
+        )
         help_menu.add_separator()
         help_menu.add_command(
             label="Over",
@@ -2560,6 +2724,28 @@ info@pitapizzanapoli.be
         if selected_mode and selected_mode != self.mode:
             # User selected a different mode, restart application
             self.switch_mode(selected_mode)
+    
+    def _check_updates_on_startup(self) -> None:
+        """Check for updates on startup (non-blocking)."""
+        try:
+            from modules.update_checker import check_updates_on_startup
+            # Check after 3 seconds (non-blocking)
+            self.root.after(3000, lambda: check_updates_on_startup(self.root, self.VERSION))
+        except Exception as e:
+            logger.debug(f"Could not check for updates: {e}")
+    
+    def check_for_updates_manual(self) -> None:
+        """Manually check for updates."""
+        try:
+            from modules.update_checker import manual_update_check
+            manual_update_check(self.root, self.VERSION)
+        except Exception as e:
+            logger.exception(f"Error checking for updates: {e}")
+            messagebox.showerror(
+                "Fout",
+                f"Kon niet controleren op updates: {e}",
+                parent=self.root
+            )
     
     def switch_mode(self, new_mode: str) -> None:
         """Switch to a different mode by restarting the application."""

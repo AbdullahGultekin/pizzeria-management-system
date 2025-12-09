@@ -4,6 +4,18 @@ Application configuration settings.
 from pydantic_settings import BaseSettings
 from typing import Optional
 import os
+from pathlib import Path
+
+# Calculate database path outside of class to avoid Pydantic annotation issues
+# From app/core/config.py: go up 4 levels to reach project root
+# app/core/config.py -> app/core -> app -> pizzeria-web/backend -> pizzeria-web -> project root
+_project_root = Path(__file__).parent.parent.parent.parent.parent  # Go up from app/core/config.py to project root
+_default_db_path = _project_root / "pizzeria.db"
+
+# Calculate .env file path outside of class to avoid Pydantic annotation issues
+_backend_dir = Path(__file__).parent.parent.parent  # pizzeria-web/backend
+_env_path = _backend_dir / ".env"
+_default_env_file = str(_env_path) if _env_path.exists() else ".env"
 
 
 class Settings(BaseSettings):
@@ -43,12 +55,9 @@ class Settings(BaseSettings):
     # Database
     # Use the same database as the Tkinter kassa app (in project root)
     # This ensures web orders and kassa orders share the same customer database
-    import pathlib
-    _project_root = pathlib.Path(__file__).parent.parent.parent.parent  # Go up from app/core/config.py to project root
-    _db_path = _project_root / "pizzeria.db"
     DATABASE_URL: str = os.getenv(
         "DATABASE_URL",
-        f"sqlite:///{_db_path}"  # Point to project root to share with Tkinter app
+        f"sqlite:///{_default_db_path}"  # Point to project root to share with Tkinter app
     )
     
     # Rate Limiting
@@ -78,11 +87,8 @@ class Settings(BaseSettings):
     
     class Config:
         # Find .env file in backend directory (where this config file is)
-        import os
-        from pathlib import Path
-        _backend_dir = Path(__file__).parent.parent.parent  # pizzeria-web/backend
-        _env_path = _backend_dir / ".env"
-        env_file = str(_env_path) if _env_path.exists() else ".env"
+        # Use pre-calculated path from module level to avoid Pydantic annotation issues
+        env_file = _default_env_file
         env_file_encoding = "utf-8"
         case_sensitive = True
 
