@@ -53,21 +53,28 @@ def open_klanten_zoeken(
 
     def update_zoekresultaten(*_: str) -> None:
         """Update search results - uses async loading to prevent UI blocking."""
+        nonlocal searching
         term = zoek_var.get().strip()
         tree.delete(*tree.get_children())
-        
-        if not term:
-            return
         
         # Use async search to prevent UI blocking
         def search_worker():
             """Background thread worker for database search."""
+            nonlocal searching
             try:
                 with DatabaseContext() as conn:
-                    cur = conn.execute(
-                        "SELECT id, telefoon, naam, straat, huisnummer FROM klanten WHERE telefoon LIKE ?",
-                        (f"%{term}%",)
-                    )
+                    if term:
+                        # Search with term
+                        cur = conn.execute(
+                            "SELECT id, telefoon, naam, straat, huisnummer FROM klanten WHERE telefoon LIKE ? ORDER BY naam",
+                            (f"%{term}%",)
+                        )
+                    else:
+                        # Show all customers when search is empty
+                        cur = conn.execute(
+                            "SELECT id, telefoon, naam, straat, huisnummer FROM klanten ORDER BY naam LIMIT 500"
+                        )
+                    
                     results = []
                     for r in cur.fetchall():
                         adres = f"{r['straat'] or ''} {r['huisnummer'] or ''}".strip()
@@ -79,7 +86,6 @@ def open_klanten_zoeken(
                 search_queue.put(("error", str(e)))
             finally:
                 with search_lock:
-                    nonlocal searching
                     searching = False
         
         # Start search in background thread
@@ -151,3 +157,6 @@ def open_klanten_zoeken(
     btns.pack(fill=tk.X, pady=(0, 10))
     tk.Button(btns, text="Selecteer Klant", command=selecteer_klant_en_sluit, bg="#D1FFD1").pack(side=tk.LEFT)
     tk.Button(btns, text="Sluiten", command=top.destroy).pack(side=tk.RIGHT)
+    
+    # Load all customers when window opens
+    top.after(100, update_zoekresultaten)

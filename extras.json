@@ -88,8 +88,8 @@
       "Lams": 2,
       "Kalkoen": 2,
       "Kip": 2,
-      "saus apart": 0
-  
+      "saus apart": 0,
+      "Met Friet": 1.0
     }
   },
   "turks-brood": {
@@ -133,7 +133,6 @@
       "Kalkoen": 2,
       "Kip": 2,
       "saus apart": 0
-      
     }
   },
   "grote-broodjes": {
@@ -416,17 +415,17 @@
       ],
       "bijgerecht_aantal": 2,
       "sauzen": [
-      "Looksaus",
-      "Samurai",
-      "Cocktail",
-      "Currysaus",
-      "Provencaalse",
-      "Andalouse",
-      "Ketchup",
-      "Mayonaise",
-      "Sambal",
-      "Bbqsaus"
-    ],
+        "Looksaus",
+        "Samurai",
+        "Cocktail",
+        "Currysaus",
+        "Provencaalse",
+        "Andalouse",
+        "Ketchup",
+        "Mayonaise",
+        "Sambal",
+        "Bbqsaus"
+      ],
       "sauzen_aantal": 4,
       "garnering": {
         "Extra feta": 4

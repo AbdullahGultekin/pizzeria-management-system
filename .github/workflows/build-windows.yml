@@ -1,15 +1,9 @@
 name: Build Windows Executable
 
 on:
-  push:
-    tags:
-      - 'v*'
-  workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version number (e.g., 1.0.0)'
-        required: true
-        type: string
+  release:
+    types: [created]
+  workflow_dispatch:  # Allows manual triggering
 
 jobs:
   build:
@@ -17,54 +11,35 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
-    
+      uses: actions/checkout@v4
+      
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.11'
-    
+        python-version: '3.12'
+        
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        pip install pyinstaller
-    
-    - name: Extract version from tag
-      id: version
-      if: startsWith(github.ref, 'refs/tags/')
-      run: |
-        VERSION=${GITHUB_REF#refs/tags/v}
-        echo "version=$VERSION" >> $GITHUB_OUTPUT
-      shell: bash
-    
-    - name: Set version from input
-      id: version
-      if: github.event_name == 'workflow_dispatch'
-      run: |
-        echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
-    
-    - name: Update version in app.py
-      run: |
-        python -c "import re; content = open('app.py', 'r', encoding='utf-8').read(); content = re.sub(r'VERSION = \"[^\"]+\"', 'VERSION = \"${{ steps.version.outputs.version }}\"', content); open('app.py', 'w', encoding='utf-8').write(content)"
-    
+        pip install pyinstaller pywin32
+        
     - name: Build executable
       run: |
-        pyinstaller --clean --noconfirm main.spec
-    
-    - name: Create release archive
-      run: |
-        cd dist
-        Compress-Archive -Path main.exe -DestinationPath pizzeria-management-v${{ steps.version.outputs.version }}-windows.zip -Force
-    
-    - name: Create GitHub Release
+        pyinstaller pizzeria.spec --clean --noconfirm
+        
+    - name: Upload artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: PizzeriaBestelformulier
+        path: dist/PizzeriaBestelformulier.exe
+        
+    - name: Create Release Asset
+      if: github.event_name == 'release'
       uses: softprops/action-gh-release@v1
       with:
-        tag_name: v${{ steps.version.outputs.version }}
-        name: Release v${{ steps.version.outputs.version }}
-        files: dist/pizzeria-management-v${{ steps.version.outputs.version }}-windows.zip
+        files: dist/PizzeriaBestelformulier.exe
         draft: false
         prerelease: false
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-

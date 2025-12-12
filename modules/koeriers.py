@@ -884,6 +884,10 @@ class CourierManager:
                     if label.winfo_exists():
                         val = var.get()
                         label.config(text=f"{val:.2f}")
+                        # Also update eindtotaal when subtotal changes (eindtotaal = subtotaal + startgeld)
+                        if hasattr(self, 'eind_totals_var') and naam in self.eind_totals_var:
+                            eindtotaal_val = self.service.calculate_final_total(val)
+                            self.eind_totals_var[naam].set(eindtotaal_val)
                 except tk.TclError:
                     pass  # Widget destroyed, ignore
             self.totals_var[naam].trace_add("write", update_subtotal)
@@ -1008,13 +1012,24 @@ class CourierManager:
             bg="#D2F2FF"
         ).grid(row=subtotal_row, column=0, sticky="ew", padx=5, pady=(8, 4))
         
-        tk.Label(
+        subtotaal_totaal_label = tk.Label(
             self.totals_frame,
-            textvariable=self.subtotaal_totaal_var,
+            text="€0.00",
             font=("Arial", 11, "bold"),
             anchor="e",
             bg="#D2F2FF"
-        ).grid(row=subtotal_row, column=1, sticky="ew", padx=5, pady=(8, 4))
+        )
+        subtotaal_totaal_label.grid(row=subtotal_row, column=1, sticky="ew", padx=5, pady=(8, 4))
+        # Update label when variable changes
+        def update_subtotaal_totaal(*args, var=self.subtotaal_totaal_var, label=subtotaal_totaal_label):
+            try:
+                if label.winfo_exists():
+                    val = var.get()
+                    label.config(text=f"€{val:.2f}")
+            except tk.TclError:
+                pass  # Widget destroyed, ignore
+        self.subtotaal_totaal_var.trace_add("write", update_subtotaal_totaal)
+        update_subtotaal_totaal()  # Initial update
         
         total_row = len(self.courier_names) + 2
         self.totaal_betaald_var = tk.DoubleVar(value=0)
@@ -1189,12 +1204,30 @@ class CourierManager:
                     online_orders = data["online_orders"]
                     order_date = data["order_date"]
                     
-                    # Clear tree
-                    for item in self.tree.get_children():
-                        self.tree.delete(item)
+                    # Get existing order IDs to avoid duplicates
+                    existing_order_ids = set(self.tree.get_children())
                     
-                    # Process and add orders to tree
-                    self._add_orders_to_tree(orders, online_orders, order_date)
+                    # Filter out orders that are already in the tree
+                    new_orders = []
+                    new_online_orders = []
+                    
+                    # Check local orders
+                    for order in orders:
+                        order_id = str(order.get('id', ''))
+                        if order_id not in existing_order_ids:
+                            new_orders.append(order)
+                    
+                    # Check online orders
+                    for online_order in online_orders:
+                        if online_order.get('afhaal') or online_order.get('betaalmethode') == 'pickup':
+                            continue
+                        order_id = f"online_{online_order.get('id', '')}"
+                        if order_id not in existing_order_ids:
+                            new_online_orders.append(online_order)
+                    
+                    # Only add new orders to tree (keep existing ones)
+                    if new_orders or new_online_orders:
+                        self._add_orders_to_tree(new_orders, new_online_orders, order_date)
                     
                     # Apply filters
                     if hasattr(self, 'search_var') and hasattr(self, 'filter_courier_var'):
@@ -1341,170 +1374,6 @@ class CourierManager:
         # Batch insert all items at once
         for item_id, values, tags in items_to_insert:
             self.tree.insert("", tk.END, iid=item_id, values=values, tags=tags)
-        
-        # Get orders (exclude afhaal orders, only delivery orders)
-        try:
-            orders = self.service.get_orders_for_date(
-                order_date, 
-                exclude_afhaal=True  # Only show delivery orders
-            )
-        except DatabaseError as e:
-            logger.exception("Error loading orders")
-            messagebox.showerror("Fout", str(e))
-            return
-        
-        # Get online orders from API (exclude afhaal/pickup orders) - SINGLE CALL
-        # OPTIMIZED: Fetch asynchronously to prevent UI blocking
-        online_orders = []
-        online_orders_cache = {}
-        
-        # Try to fetch online orders (with timeout to prevent blocking)
-        try:
-            online_orders = self.fetch_online_orders(order_date)
-            self._cached_online_orders = online_orders  # Cache for recalculate_courier_totals
-        except Exception as e:
-            logger.debug(f"Error fetching online orders: {e}")
-            self._cached_online_orders = []
-        
-        if online_orders:
-            # Convert online orders to same format as local orders
-            for online_order in online_orders:
-                # Skip afhaal/pickup orders - they should only appear in Afhaal tab
-                if online_order.get('afhaal') or online_order.get('betaalmethode') == 'pickup':
-                    continue
-                
-                # Cache for later lookups
-                online_orders_cache[online_order['id']] = online_order
-                
-                # Parse address
-                klant_adres = online_order.get('klant_adres', '')
-                straat = ''
-                huisnummer = ''
-                plaats = ''
-                if klant_adres:
-                    # Format: "Straat Huisnummer, Postcode Gemeente"
-                    parts = klant_adres.split(',')
-                    if len(parts) >= 1:
-                        address_part = parts[0].strip()
-                        address_words = address_part.split()
-                        if len(address_words) > 1:
-                            straat = ' '.join(address_words[:-1])
-                            huisnummer = address_words[-1]
-                    if len(parts) >= 2:
-                        plaats = parts[1].strip()
-                
-                # Convert to same format as local orders
-                order_dict = {
-                    'id': f"online_{online_order['id']}",  # Prefix to distinguish
-                    'tijd': online_order.get('tijd', ''),
-                    'straat': straat,
-                    'huisnummer': huisnummer,
-                    'plaats': plaats,
-                    'telefoon': online_order.get('klant_telefoon', ''),
-                    'totaal': online_order.get('totaal', 0),
-                    'koerier_naam': self.get_courier_name_by_id(online_order.get('koerier_id')),
-                    'online': True  # Mark as online order
-                }
-                orders.append(order_dict)
-        
-        # Get filter values
-        search_text = self.filter_vars.get("search", tk.StringVar()).get()
-        filter_koerier = self.filter_vars.get("koerier", tk.StringVar(value="Alle")).get()
-        
-        # Add orders to tree (OPTIMIZED - batch insert for better performance)
-        # All orders are added, filtering happens via apply_filters() after insertion
-        items_to_insert = []
-        for idx, order in enumerate(orders):
-            
-            koerier_naam = order.get('koerier_naam') or ""
-            base_tag = "row_a" if idx % 2 == 0 else "row_b"
-            
-            # Priority: koerier tag overrides base tags for full row coloring
-            if koerier_naam:
-                tag = f"koerier_{koerier_naam.replace(' ', '_')}"
-                # Only use koerier tag (no base_tag) to ensure full row coloring
-                tags = (tag,)
-            else:
-                # Unassigned orders - use base tag + unassigned for clear visual indication
-                tags = (base_tag, "unassigned")
-                # Mark online orders with special tag (but don't override unassigned color)
-                if order.get('online'):
-                    tags = tags + ("online",)
-            
-            # Determine order number and type
-            if order.get('online'):
-                soort = "Online"
-                nummer = str(order['id']).replace("online_", "")
-                # Get online order data from cache
-                online_order_data = online_orders_cache.get(int(nummer))
-            else:
-                soort = "Kassa"
-                nummer = str(order.get('id', ''))
-                online_order_data = None
-            
-            # Parse plaats to get gemeente (only gemeente, no postcode)
-            gemeente = ""
-            plaats = order.get('plaats', '')
-            if plaats:
-                plaats_parts = plaats.split()
-                if len(plaats_parts) > 1:
-                    # Skip first part (postcode), take rest as gemeente
-                    gemeente = ' '.join(plaats_parts[1:])
-                else:
-                    # If no postcode, use whole string as gemeente
-                    gemeente = plaats
-            
-            # Get vertrek time (levertijd for online orders, or empty for local)
-            vertrek = ""
-            if online_order_data:
-                vertrek = online_order_data.get('levertijd', '')
-            
-            # Format totaal
-            totaal_str = f"€ {order['totaal']:,.2f}".replace(',', ' ').replace('.', ',')
-            
-            # Get koerier name (already extracted above)
-            koerier_display = koerier_naam if koerier_naam else ""
-            
-            # Get telefoon number
-            telefoon = order.get('telefoon', '')
-            
-            # Collect items for batch insert (OPTIMIZED)
-            items_to_insert.append((
-                order['id'],
-                (
-                    soort,
-                    nummer,
-                    totaal_str,
-                    order.get('straat', ''),
-                    order.get('huisnummer', ''),
-                    gemeente,
-                    telefoon,
-                    order.get('tijd', ''),
-                    vertrek,
-                    koerier_display
-                ),
-                tags
-            ))
-        
-        # Batch insert all items at once (OPTIMIZED - much faster)
-        for item_id, values, tags in items_to_insert:
-            self.tree.insert("", tk.END, iid=item_id, values=values, tags=tags)
-        
-        # Apply filters after loading (if filter vars exist)
-        if hasattr(self, 'search_var') and hasattr(self, 'filter_courier_var'):
-            self.apply_filters()
-        
-        # Recalculate totals
-        if hasattr(self, 'totals_var') and self.totals_var:
-            try:
-                self.recalculate_courier_totals()
-                self.recalculate_total_payment()
-            except Exception as e:
-                logger.exception("Error in totals recalculation")
-        
-        # Update courier cards to refresh statistics
-        if hasattr(self, 'courier_cards_frame'):
-            self.render_courier_cards()
     
     def recalculate_courier_totals(self) -> None:
         """Recalculate totals for each courier."""
@@ -1531,10 +1400,13 @@ class CourierManager:
             courier_totals = {naam: 0.0 for naam in self.courier_names}
             
             for order in local_orders:
+                # Count all orders for total (including unassigned)
+                total_orders += float(order.get('totaal', 0))
+                
+                # Only add to courier totals if assigned to a courier
                 koerier_naam = order.get('koerier_naam')
                 if koerier_naam and koerier_naam in courier_totals:
                     courier_totals[koerier_naam] += float(order.get('totaal', 0))
-                    total_orders += float(order.get('totaal', 0))
         except Exception as e:
             logger.warning(f"Error calculating local order totals: {e}")
         
@@ -1551,12 +1423,15 @@ class CourierManager:
                 if online_order.get('afhaal') or online_order.get('betaalmethode') == 'pickup':
                     continue
                 
+                # Count all online orders for total (including unassigned)
+                total_orders += float(online_order.get('totaal', 0))
+                
+                # Only add to courier totals if assigned to a courier
                 koerier_id = online_order.get('koerier_id')
                 if koerier_id:
                     koerier_naam = self.get_courier_name_by_id(koerier_id)
                     if koerier_naam and koerier_naam in courier_totals:
                         courier_totals[koerier_naam] += float(online_order.get('totaal', 0))
-                        total_orders += float(online_order.get('totaal', 0))
         except Exception as e:
             logger.warning(f"Error calculating online order totals: {e}")
         

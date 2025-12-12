@@ -1,11 +1,12 @@
-# Auto-Update Systeem - Gebruikershandleiding
+kl# Auto-Update Systeem - Gebruikershandleiding
 
 ## 📋 Overzicht
 
 Het Pizzeria Management System heeft nu een **automatisch update systeem** dat:
 - ✅ Automatisch controleert op nieuwe versies bij opstarten
 - ✅ Je waarschuwt wanneer er een update beschikbaar is
-- ✅ Je direct naar de download link stuurt
+- ✅ **Automatisch updaten via git pull** (zonder exe te bouwen!) 🎉
+- ✅ Of download exe bestand als je dat liever hebt
 - ✅ **GitHub Actions** automatisch nieuwe exe's bouwt bij elke release
 
 ## 🚀 Nieuwe Workflow (Veel Simpeler!)
@@ -15,12 +16,21 @@ Het Pizzeria Management System heeft nu een **automatisch update systeem** dat:
 **Oude manier:**
 1. Maak wijzigingen
 2. Push naar GitHub
-3. Op PC: Pull van GitHub
+3. Op PC: Pull van GitHub handmatig
 4. Run PyInstaller handmatig
 5. Test de exe
 6. Deel de exe
 
-**Nieuwe manier:**
+**Nieuwe manier (Twee opties):**
+
+#### Optie A: Automatische Git Update (Zonder Exe) 🔄
+1. Maak wijzigingen
+2. Update versie in `app.py` (bijv. `VERSION = "1.1.0"`)
+3. Commit en push naar GitHub
+4. **Gebruikers krijgen automatisch melding en kunnen direct updaten!**
+5. Geen exe build nodig voor Python gebruikers! 🎉
+
+#### Optie B: Exe Release (Voor Distributie) 📦
 1. Maak wijzigingen
 2. Update versie in `app.py` (bijv. `VERSION = "1.1.0"`)
 3. Commit en push naar GitHub
@@ -56,23 +66,43 @@ git push origin v1.1.0
 2. **Als er een update is:** Je krijgt een melding met:
    - Huidige versie vs. nieuwe versie
    - Release notes
-   - Download knop
+   - **🔄 Automatisch Updaten** knop (als je in een git repository werkt)
+   - **📥 Download Exe** knop (als je een exe gebruikt)
+
+### Twee Update Methoden:
+
+#### Methode 1: Automatisch Updaten (Aanbevolen voor Developers) 🔄
+
+**Werkt alleen als je de app draait vanuit een git repository!**
+
+1. Klik op **"🔄 Automatisch Updaten"** in de update melding
+2. Bevestig de update
+3. De app doet automatisch:
+   - ✅ Backup van je lokale gegevens
+   - ✅ `git pull` om laatste wijzigingen op te halen
+   - ✅ Herstart de app met nieuwe versie
+4. **Klaar!** Je database en instellingen blijven behouden
+
+**Voordelen:**
+- ⚡ Snel (geen download nodig)
+- 🛡️ Veilig (automatische backup)
+- 🔄 Direct beschikbaar (geen exe build nodig)
+
+#### Methode 2: Exe Download (Voor Standalone Gebruikers) 📥
+
+1. Klik op **"📥 Download Exe"** in de update melding
+2. Download de nieuwe `.exe` of `.zip` bestand
+3. **Vervang** het oude `.exe` bestand met het nieuwe
+4. Start de app opnieuw
+
+**⚠️ Belangrijk:** Je database (`pizzeria.db`) en instellingen blijven behouden!
 
 ### Handmatig Controleren:
 
 1. Open de app
 2. Ga naar **Help** → **Controleren op Updates...**
 3. De app controleert op updates
-4. Als er een update is, krijg je de download link
-
-### Update Installeren:
-
-1. Klik op "Download Nu" in de update melding
-2. Download de nieuwe `.exe` of `.zip` bestand
-3. **Vervang** het oude `.exe` bestand met het nieuwe
-4. Start de app opnieuw
-
-**⚠️ Belangrijk:** Je database (`pizzeria.db`) en instellingen blijven behouden!
+4. Als er een update is, krijg je dezelfde opties als hierboven
 
 ## 🔧 Technische Details
 

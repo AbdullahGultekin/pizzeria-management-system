@@ -5,7 +5,8 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 from typing import Optional
 import webbrowser
-from utils.updater import UpdateChecker, check_for_updates_async
+import threading
+from utils.updater import UpdateChecker, check_for_updates_async, is_git_repository, perform_git_update
 from logging_config import get_logger
 
 logger = get_logger("pizzeria.update_checker")
@@ -80,6 +81,9 @@ def show_update_dialog(parent: tk.Tk, update_info: dict):
     button_frame = tk.Frame(dialog, pady=10)
     button_frame.pack(fill=tk.X)
     
+    # Check if git update is available
+    can_git_update = is_git_repository()
+    
     def download_update():
         """Open download URL in browser."""
         download_url = update_info.get("download_url")
@@ -98,20 +102,135 @@ def show_update_dialog(parent: tk.Tk, update_info: dict):
         
         dialog.destroy()
     
+    def auto_update():
+        """Perform automatic git update."""
+        # Confirm dialog
+        confirm = messagebox.askyesno(
+            "Automatische Update",
+            "Wil je nu automatisch updaten via git pull?\n\n"
+            "Dit zal:\n"
+            "• Je lokale gegevens backuppen\n"
+            "• De laatste wijzigingen van GitHub ophalen\n"
+            "• De applicatie opnieuw starten\n\n"
+            "Je database en instellingen blijven behouden.",
+            parent=dialog
+        )
+        
+        if not confirm:
+            return
+        
+        # Show progress dialog
+        progress_dialog = tk.Toplevel(dialog)
+        progress_dialog.title("Updaten...")
+        progress_dialog.transient(dialog)
+        progress_dialog.geometry("400x150")
+        progress_dialog.grab_set()
+        
+        progress_label = tk.Label(
+            progress_dialog,
+            text="Updaten van GitHub...",
+            font=("Arial", 11)
+        )
+        progress_label.pack(pady=20)
+        
+        progress_bar = ttk.Progressbar(
+            progress_dialog,
+            mode='indeterminate',
+            length=300
+        )
+        progress_bar.pack(pady=10)
+        progress_bar.start()
+        
+        status_label = tk.Label(
+            progress_dialog,
+            text="",
+            font=("Arial", 9),
+            fg="gray"
+        )
+        status_label.pack(pady=5)
+        
+        def update_worker():
+            """Perform update in background thread."""
+            try:
+                status_label.config(text="Backup maken van lokale gegevens...")
+                success, message = perform_git_update(backup_data=True)
+                
+                progress_bar.stop()
+                progress_dialog.destroy()
+                dialog.destroy()
+                
+                if success:
+                    messagebox.showinfo(
+                        "Update Succesvol",
+                        f"{message}\n\n"
+                        "De applicatie zal nu opnieuw starten.\n"
+                        "Sluit dit venster om de update te voltooien.",
+                        parent=parent
+                    )
+                    # Restart application
+                    import sys
+                    import os
+                    os.execv(sys.executable, [sys.executable] + sys.argv)
+                else:
+                    messagebox.showerror(
+                        "Update Gefaald",
+                        f"{message}\n\n"
+                        "Je kunt handmatig updaten via:\n"
+                        "scripts\\update\\update_safe.bat",
+                        parent=parent
+                    )
+            except Exception as e:
+                progress_bar.stop()
+                progress_dialog.destroy()
+                logger.exception(f"Error during auto update: {e}")
+                messagebox.showerror(
+                    "Fout",
+                    f"Fout tijdens automatische update:\n{str(e)}",
+                    parent=parent
+                )
+        
+        # Start update in background
+        thread = threading.Thread(target=update_worker, daemon=True)
+        thread.start()
+    
     def later():
         """Close dialog."""
         dialog.destroy()
     
-    tk.Button(
-        button_frame,
-        text="Download Nu",
-        command=download_update,
-        bg="#4CAF50",
-        fg="white",
-        font=("Arial", 11, "bold"),
-        padx=20,
-        pady=5
-    ).pack(side=tk.LEFT, padx=10)
+    # Primary button: Auto-update if available, otherwise download
+    if can_git_update:
+        tk.Button(
+            button_frame,
+            text="🔄 Automatisch Updaten",
+            command=auto_update,
+            bg="#4CAF50",
+            fg="white",
+            font=("Arial", 11, "bold"),
+            padx=20,
+            pady=5
+        ).pack(side=tk.LEFT, padx=10)
+        
+        tk.Button(
+            button_frame,
+            text="📥 Download Exe",
+            command=download_update,
+            bg="#2196F3",
+            fg="white",
+            font=("Arial", 11),
+            padx=20,
+            pady=5
+        ).pack(side=tk.LEFT, padx=10)
+    else:
+        tk.Button(
+            button_frame,
+            text="Download Nu",
+            command=download_update,
+            bg="#4CAF50",
+            fg="white",
+            font=("Arial", 11, "bold"),
+            padx=20,
+            pady=5
+        ).pack(side=tk.LEFT, padx=10)
     
     tk.Button(
         button_frame,
@@ -121,6 +240,17 @@ def show_update_dialog(parent: tk.Tk, update_info: dict):
         padx=20,
         pady=5
     ).pack(side=tk.LEFT, padx=10)
+    
+    # Show info about git update if available
+    if can_git_update:
+        info_label = tk.Label(
+            content_frame,
+            text="💡 Tip: Automatische update werkt direct zonder exe te downloaden!",
+            font=("Arial", 9),
+            fg="#4CAF50",
+            bg="#E8F5E9"
+        )
+        info_label.pack(pady=(10, 0))
 
 
 def check_updates_on_startup(parent: tk.Tk, current_version: str):

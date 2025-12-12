@@ -127,10 +127,10 @@ def open_klant_management(root):
                                        WHERE telefoon LIKE ?
                                           OR naam LIKE ?
                                           OR straat LIKE ?
-                                       ORDER BY totaal_bestellingen DESC, laatste_bestelling DESC
+                                       ORDER BY naam
                                        """, (f"%{zoekterm}%", f"%{zoekterm}%", f"%{zoekterm}%"))
                     else:
-                        # Toon alle klanten, gesorteerd op activiteit
+                        # Toon alle klanten, alfabetisch gesorteerd op naam
                         cursor.execute("""
                                        SELECT id,
                                               telefoon,
@@ -142,7 +142,7 @@ def open_klant_management(root):
                                               totaal_bestellingen,
                                               totaal_besteed
                                        FROM klanten
-                                       ORDER BY totaal_bestellingen DESC, laatste_bestelling DESC LIMIT 100
+                                       ORDER BY naam
                                        """)
 
                     for klant in cursor.fetchall():

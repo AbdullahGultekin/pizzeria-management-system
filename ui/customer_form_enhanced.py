@@ -136,7 +136,22 @@ class EnhancedCustomerForm:
             activebackground=self.COLORS['bg_primary'],
             command=self._on_order_type_change
         )
-        afhaal_radio.pack(side=tk.LEFT)
+        afhaal_radio.pack(side=tk.LEFT, padx=(0, 15))
+        
+        # Nieuw button - clear all customer data
+        nieuw_btn = tk.Button(
+            type_frame,
+            text="Nieuw",
+            command=self.clear_form,
+            bg="#DC3545",
+            fg="white",
+            font=("Arial", 9, "bold"),
+            relief="flat",
+            padx=12,
+            pady=4,
+            cursor="hand2"
+        )
+        nieuw_btn.pack(side=tk.LEFT)
     
     def _on_order_type_change(self) -> None:
         """Handle order type change (Afhaal/Bezorging)."""

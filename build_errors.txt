@@ -1,0 +1,57 @@
+210 INFO: PyInstaller: 6.16.0, contrib hooks: 2025.9
+214 INFO: Python: 3.12.3
+241 INFO: Platform: Windows-11-10.0.26200-SP0
+241 INFO: Python environment: C:\Users\abdul\AppData\Local\Programs\Python\Python312
+241 INFO: Removing temporary files and cleaning cache in C:\Users\abdul\AppData\Local\pyinstaller
+248 INFO: Module search paths (PYTHONPATH):
+['C:\\Users\\abdul\\Cursor projects\\pizzeria-management-system',
+ 'C:\\Users\\abdul\\AppData\\Local\\Programs\\Python\\Python312\\python312.zip',
+ 'C:\\Users\\abdul\\AppData\\Local\\Programs\\Python\\Python312\\DLLs',
+ 'C:\\Users\\abdul\\AppData\\Local\\Programs\\Python\\Python312\\Lib',
+ 'C:\\Users\\abdul\\AppData\\Local\\Programs\\Python\\Python312',
+ 'C:\\Users\\abdul\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages',
+ 'C:\\Users\\abdul\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\win32',
+ 'C:\\Users\\abdul\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\win32\\lib',
+ 'C:\\Users\\abdul\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\Pythonwin',
+ 'C:\\Users\\abdul\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\setuptools\\_vendor',
+ 'C:\\Users\\abdul\\Cursor projects\\pizzeria-management-system',
+ 'C:\\Users\\abdul\\Cursor projects\\pizzeria-management-system']
+608 INFO: Appending 'datas' from .spec
+618 INFO: checking Analysis
+618 INFO: Building Analysis because Analysis-00.toc is non existent
+618 INFO: Looking for Python shared library...
+618 INFO: Using Python shared library: C:\Users\abdul\AppData\Local\Programs\Python\Python312\python312.dll
+618 INFO: Running Analysis Analysis-00.toc
+618 INFO: Target bytecode optimization level: 0
+624 INFO: Initializing module dependency graph...
+626 INFO: Initializing module graph hook caches...
+647 INFO: Analyzing modules for base_library.zip ...
+2040 INFO: Processing standard module hook 'hook-encodings.py' from 'C:\\Users\\abdul\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+3863 INFO: Processing standard module hook 'hook-pickle.py' from 'C:\\Users\\abdul\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+4996 INFO: Processing standard module hook 'hook-heapq.py' from 'C:\\Users\\abdul\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+5381 INFO: Caching module dependency graph...
+5432 INFO: Analyzing C:\Users\abdul\Cursor projects\pizzeria-management-system\main.py
+5515 INFO: Processing pre-find-module-path hook 'hook-tkinter.py' from 'C:\\Users\\abdul\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks\\pre_find_module_path'
+5515 INFO: TclTkInfo: initializing cached Tcl/Tk info...
+5731 INFO: Processing standard module hook 'hook-_tkinter.py' from 'C:\\Users\\abdul\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+5852 INFO: Processing standard module hook 'hook-platform.py' from 'C:\\Users\\abdul\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+5865 INFO: Processing pre-safe-import-module hook 'hook-typing_extensions.py' from 'C:\\Users\\abdul\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+5880 INFO: SetuptoolsInfo: initializing cached setuptools info...
+10353 INFO: Processing standard module hook 'hook-multiprocessing.util.py' from 'C:\\Users\\abdul\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+10554 INFO: Processing standard module hook 'hook-xml.py' from 'C:\\Users\\abdul\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+10787 INFO: Processing standard module hook 'hook-_ctypes.py' from 'C:\\Users\\abdul\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+11338 INFO: Processing standard module hook 'hook-PIL.py' from 'C:\\Users\\abdul\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+11454 INFO: Processing standard module hook 'hook-PIL.Image.py' from 'C:\\Users\\abdul\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+12139 INFO: Processing pre-safe-import-module hook 'hook-packaging.py' from 'C:\\Users\\abdul\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+12206 INFO: Processing standard module hook 'hook-PIL.ImageFilter.py' from 'C:\\Users\\abdul\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+12440 INFO: Processing standard module hook 'hook-sqlite3.py' from 'C:\\Users\\abdul\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+13183 INFO: Processing standard module hook 'hook-urllib3.py' from 'C:\\Users\\abdul\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+14040 INFO: Processing standard module hook 'hook-charset_normalizer.py' from 'C:\\Users\\abdul\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+14173 INFO: Processing standard module hook 'hook-certifi.py' from 'C:\\Users\\abdul\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+14390 INFO: Processing standard module hook 'hook-usb.py' from 'C:\\Users\\abdul\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+14824 INFO: Processing standard module hook 'hook-phonenumbers.py' from 'C:\\Users\\abdul\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+15652 INFO: Processing standard module hook 'hook-difflib.py' from 'C:\\Users\\abdul\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+15877 INFO: Processing standard module hook 'hook-sysconfig.py' from 'C:\\Users\\abdul\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+16478 INFO: Analyzing hidden import 'PIL._tkinter_finder'
+16488 INFO: Processing module hooks (post-graph stage)...
+Aborted by user request.

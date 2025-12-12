@@ -7,6 +7,24 @@ from logging_config import get_logger
 logger = get_logger("pizzeria.repositories.customer")
 
 
+def normalize_customer_name(naam: str) -> str:
+    """
+    Normalize customer name: first letter uppercase, rest lowercase.
+    
+    Args:
+        naam: Customer name to normalize
+        
+    Returns:
+        Normalized name with first letter uppercase
+    """
+    if not naam or not naam.strip():
+        return naam
+    
+    naam = naam.strip()
+    # Capitalize first letter, lowercase the rest
+    return naam[0].upper() + naam[1:].lower() if len(naam) > 1 else naam.upper()
+
+
 class CustomerRepository:
     """Repository for customer-related database operations."""
     
@@ -66,6 +84,9 @@ class CustomerRepository:
         Returns:
             Customer ID
         """
+        # Normalize customer name: first letter uppercase, rest lowercase
+        normalized_naam = normalize_customer_name(naam)
+        
         with DatabaseContext() as conn:
             cursor = conn.cursor()
             # Check if customer exists
@@ -76,14 +97,14 @@ class CustomerRepository:
                 # Update existing customer
                 cursor.execute(
                     "UPDATE klanten SET straat = ?, huisnummer = ?, plaats = ?, naam = ? WHERE telefoon = ?",
-                    (straat, huisnummer, plaats, naam, telefoon)
+                    (straat, huisnummer, plaats, normalized_naam, telefoon)
                 )
                 return existing['id']
             else:
                 # Create new customer
                 cursor.execute(
                     "INSERT INTO klanten (telefoon, straat, huisnummer, plaats, naam) VALUES (?, ?, ?, ?, ?)",
-                    (telefoon, straat, huisnummer, plaats, naam)
+                    (telefoon, straat, huisnummer, plaats, normalized_naam)
                 )
                 return cursor.lastrowid
     
