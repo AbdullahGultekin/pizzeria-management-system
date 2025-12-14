@@ -5,6 +5,9 @@ on:
     types: [created]
   workflow_dispatch:  # Allows manual triggering
 
+permissions:
+  contents: write  # Required to upload release assets
+
 jobs:
   build:
     runs-on: windows-latest
