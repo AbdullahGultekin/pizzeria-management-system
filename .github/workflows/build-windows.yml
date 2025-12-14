@@ -37,11 +37,32 @@ jobs:
         name: PizzeriaBestelformulier
         path: dist/PizzeriaBestelformulier.exe
         
-    - name: Create Release Asset
+    - name: Get latest release tag (for manual trigger)
+      if: github.event_name == 'workflow_dispatch'
+      id: get_latest_release
+      run: |
+        $response = gh api repos/${{ github.repository }}/releases/latest
+        $tag = ($response | ConvertFrom-Json).tag_name
+        echo "tag=$tag" >> $env:GITHUB_OUTPUT
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Create Release Asset (on new release)
       if: github.event_name == 'release'
       uses: softprops/action-gh-release@v2
       with:
         files: dist/PizzeriaBestelformulier.exe
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Attach to latest release (manual trigger)
+      if: github.event_name == 'workflow_dispatch'
+      uses: softprops/action-gh-release@v2
+      with:
+        files: dist/PizzeriaBestelformulier.exe
+        tag_name: ${{ steps.get_latest_release.outputs.tag }}
         draft: false
         prerelease: false
       env:
