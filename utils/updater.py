@@ -134,6 +134,9 @@ class UpdateChecker:
             if system == "Windows":
                 if name.endswith(".exe"):
                     return browser_download_url
+                elif name.endswith(".zip"):
+                    # ZIP files also work (user can extract)
+                    return browser_download_url
             elif system == "Darwin":  # macOS
                 if name.endswith(".dmg") or name.endswith(".app"):
                     return browser_download_url

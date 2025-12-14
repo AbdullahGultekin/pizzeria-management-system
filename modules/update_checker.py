@@ -6,6 +6,8 @@ from tkinter import messagebox, ttk
 from typing import Optional
 import webbrowser
 import threading
+import sys
+import urllib.request
 from utils.updater import UpdateChecker, check_for_updates_async, is_git_repository, perform_git_update
 from logging_config import get_logger
 
@@ -85,22 +87,200 @@ def show_update_dialog(parent: tk.Tk, update_info: dict):
     can_git_update = is_git_repository()
     
     def download_update():
-        """Open download URL in browser."""
+        """Download update file automatically."""
+        import urllib.request
+        import os
+        from pathlib import Path
+        
         download_url = update_info.get("download_url")
         release_url = update_info.get("release_url")
+        latest_version = update_info.get("latest_version", "unknown")
+        
+        # If no download URL from API, try to construct it directly
+        if not download_url and release_url:
+            # Try common asset names
+            tag_name = update_info.get("latest_version", "").lstrip("v")
+            if not tag_name.startswith("v"):
+                tag_name = f"v{tag_name}"
+            
+            # Try to construct download URL for common asset names
+            repo_name = release_url.split("/releases/tag/")[0].split("/")[-1]
+            owner_name = release_url.split("/releases/tag/")[0].split("/")[-2]
+            
+            # Try .exe first, then .zip
+            possible_names = [
+                "PizzeriaBestelformulier.exe",
+                "PizzeriaBestelformulier.zip",
+                f"pizzeria-management-system-{tag_name}.exe",
+                f"pizzeria-management-system-{tag_name}.zip"
+            ]
+            
+            # Test if any of these URLs exist
+            for asset_name in possible_names:
+                test_url = f"https://github.com/{owner_name}/{repo_name}/releases/download/{tag_name}/{asset_name}"
+                try:
+                    # Quick HEAD request to check if file exists
+                    test_req = urllib.request.Request(test_url, method='HEAD')
+                    with urllib.request.urlopen(test_req, timeout=2) as response:
+                        if response.status == 200:
+                            download_url = test_url
+                            logger.info(f"Found asset via direct URL: {download_url}")
+                            break
+                except:
+                    continue
         
         if download_url:
-            webbrowser.open(download_url)
+            # Automatisch downloaden
+            try:
+                # Bepaal download locatie (naast EXE of in Downloads)
+                if hasattr(sys, 'frozen') and sys.frozen:
+                    # Running from EXE
+                    download_dir = Path(sys.executable).parent
+                else:
+                    # Running from script
+                    download_dir = Path.home() / "Downloads"
+                    download_dir.mkdir(exist_ok=True)
+                
+                # Bepaal bestandsnaam
+                filename = download_url.split('/')[-1]
+                if '?' in filename:
+                    filename = filename.split('?')[0]
+                download_path = download_dir / filename
+                
+                # Toon progress dialog
+                progress_dialog = tk.Toplevel(dialog)
+                progress_dialog.title("Downloaden...")
+                progress_dialog.transient(dialog)
+                progress_dialog.geometry("400x150")
+                progress_dialog.grab_set()
+                
+                progress_label = tk.Label(
+                    progress_dialog,
+                    text=f"Downloaden van versie {latest_version}...",
+                    font=("Arial", 11)
+                )
+                progress_label.pack(pady=20)
+                
+                progress_bar = ttk.Progressbar(
+                    progress_dialog,
+                    mode='indeterminate',
+                    length=300
+                )
+                progress_bar.pack(pady=10)
+                progress_bar.start()
+                
+                def download_worker():
+                    """Download in background thread."""
+                    try:
+                        # Download file
+                        urllib.request.urlretrieve(download_url, str(download_path))
+                        
+                        # Update UI from main thread
+                        def on_complete():
+                            progress_bar.stop()
+                            progress_dialog.destroy()
+                            dialog.destroy()
+                            
+                            messagebox.showinfo(
+                                "Download Voltooid",
+                                f"Update succesvol gedownload!\n\n"
+                                f"Locatie: {download_path}\n\n"
+                                f"Pak het bestand uit en vervang de oude EXE.",
+                                parent=parent
+                            )
+                        
+                        parent.after(0, on_complete)
+                        
+                    except Exception as e:
+                        logger.exception(f"Error downloading update: {e}")
+                        
+                        def on_error():
+                            progress_bar.stop()
+                            progress_dialog.destroy()
+                            messagebox.showerror(
+                                "Download Gefaald",
+                                f"Kon update niet downloaden:\n{str(e)}\n\n"
+                                f"Probeer handmatig te downloaden van:\n{release_url}",
+                                parent=dialog
+                            )
+                        
+                        parent.after(0, on_error)
+                
+                # Start download in background
+                import threading
+                thread = threading.Thread(target=download_worker, daemon=True)
+                thread.start()
+                
+            except Exception as e:
+                logger.exception(f"Error setting up download: {e}")
+                # Fallback: open in browser
+                webbrowser.open(download_url)
+                dialog.destroy()
         elif release_url:
+            # Geen directe download URL - probeer direct download URL te construeren
+            # GitHub releases download URL format: 
+            # https://github.com/owner/repo/releases/download/tag/filename
+            tag_name = latest_version
+            if not tag_name.startswith("v"):
+                tag_name = f"v{tag_name}"
+            
+            # Extract repo info from release_url
+            try:
+                # release_url format: https://github.com/owner/repo/releases/tag/v1.1.1
+                parts = release_url.replace("https://github.com/", "").split("/releases/tag/")
+                if len(parts) == 2:
+                    repo_path = parts[0]  # owner/repo
+                    
+                    # Try common asset names
+                    possible_assets = [
+                        f"https://github.com/{repo_path}/releases/download/{tag_name}/PizzeriaBestelformulier.exe",
+                        f"https://github.com/{repo_path}/releases/download/{tag_name}/PizzeriaBestelformulier.zip",
+                    ]
+                    
+                    # Test which URL works
+                    working_url = None
+                    for test_url in possible_assets:
+                        try:
+                            test_req = urllib.request.Request(test_url, method='HEAD')
+                            with urllib.request.urlopen(test_req, timeout=3) as response:
+                                if response.status == 200:
+                                    working_url = test_url
+                                    logger.info(f"Found working download URL: {working_url}")
+                                    break
+                        except:
+                            continue
+                    
+                    if working_url:
+                        # Use the working URL for download
+                        download_url = working_url
+                        # Retry download with found URL
+                        download_update()
+                        return
+            except Exception as e:
+                logger.debug(f"Could not construct download URL: {e}")
+            
+            # Fallback: open releases pagina met duidelijke instructies
             webbrowser.open(release_url)
+            messagebox.showinfo(
+                "Download Update",
+                f"Update versie {latest_version} beschikbaar!\n\n"
+                "De GitHub releases pagina is geopend.\n\n"
+                "Download instructies:\n"
+                "1. Scroll naar 'Assets' sectie\n"
+                "2. Klik op 'PizzeriaBestelformulier.zip' of '.exe'\n"
+                "3. Het bestand wordt automatisch gedownload\n\n"
+                "Tip: Wacht 2-5 minuten en probeer opnieuw voor automatische download.",
+                parent=dialog
+            )
+            dialog.destroy()
         else:
             messagebox.showinfo(
                 "Download",
-                "Download URL niet beschikbaar. Bezoek de GitHub releases pagina.",
+                "Download URL niet beschikbaar.\n\n"
+                "Bezoek de GitHub releases pagina om de update te downloaden.",
                 parent=dialog
             )
-        
-        dialog.destroy()
+            dialog.destroy()
     
     def auto_update():
         """Perform automatic git update."""

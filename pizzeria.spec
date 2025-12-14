@@ -6,9 +6,45 @@ This file configures how to build the Windows executable.
 
 import sys
 from pathlib import Path
+import os
 
 # Get the project root directory
 project_root = Path(SPECPATH)
+
+# Find Tcl/Tk directories (required for Tkinter)
+def find_tcl_tk():
+    """Find Tcl/Tk installation directories."""
+    import tkinter
+    
+    # Get Python installation directory
+    python_dir = Path(sys.executable).parent
+    
+    # Standard locations for Tcl/Tk in Python installation
+    tcl_dir = python_dir / 'tcl'
+    tk_dir = python_dir / 'tcl'
+    
+    # Alternative: use tkinter to find actual location
+    try:
+        root = tkinter.Tk()
+        tcl_lib = root.tk.eval('info library')
+        # Get parent directory containing tcl8.6
+        tcl_parent = Path(tcl_lib).parent.parent
+        if tcl_parent.exists():
+            tcl_dir = tcl_parent
+        root.destroy()
+    except:
+        pass
+    
+    return tcl_dir, tk_dir
+
+try:
+    tcl_dir, tk_dir = find_tcl_tk()
+    print(f"Found Tcl directory: {tcl_dir}")
+    print(f"Found Tk directory: {tk_dir}")
+except Exception as e:
+    print(f"WARNING: Could not find Tcl/Tk directories: {e}")
+    tcl_dir = None
+    tk_dir = None
 
 # Data files to include
 # Note: settings.json is optional (will be created automatically)
@@ -50,7 +86,23 @@ hiddenimports = [
     'tkinter.scrolledtext',
     'phonenumbers',  # Phone number validation for EU countries
     'phonenumbers.data',  # Phone number metadata
+    'requests',  # HTTP requests for update checking and Webex API
+    'urllib3',  # Required by requests
+    'certifi',  # SSL certificates for requests
+    'charset_normalizer',  # Character encoding detection for requests
+    'idna',  # Internationalized domain names for requests
 ]
+
+# Add Tcl/Tk data files (required for Tkinter to work in EXE)
+# PyInstaller needs the entire tcl directory to be included
+if tcl_dir and tcl_dir.exists():
+    # Add entire tcl directory - PyInstaller will extract it to _MEI*/tcl at runtime
+    tcl_data = str(tcl_dir)
+    datas.append((tcl_data, 'tcl'))
+    print(f"Added Tcl/Tk data: {tcl_data} -> tcl/")
+    print(f"  This includes: tcl8.6, tk8.6, and other Tcl packages")
+else:
+    print("WARNING: Tcl directory not found! Tkinter may not work in EXE.")
 
 # Analysis phase
 a = Analysis(
