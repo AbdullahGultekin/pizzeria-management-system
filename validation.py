@@ -157,8 +157,9 @@ def validate_name(name: str, required: bool = False) -> Optional[str]:
     if len(name) > 100:
         raise ValidationError("Naam is te lang (maximaal 100 tekens)")
     
-    # Basic validation - allow letters, spaces, hyphens, apostrophes
-    if not re.match(r'^[a-zA-Z\s\-\']+$', name):
+    # Basic validation - allow letters, numbers, spaces, hyphens, apostrophes, and dots
+    # This allows names like "3 de bel van boven", "Jan 2", "O'Brien", "Van der Berg", etc.
+    if not re.match(r'^[a-zA-Z0-9\s\-\'\.]+$', name):
         raise ValidationError("Naam bevat ongeldige tekens")
     
     return name

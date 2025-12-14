@@ -1074,8 +1074,15 @@ class CourierManager:
         
         self.loading_orders = True
         
-        # Show loading indicator
-        self._show_loading_indicator()
+        # Only show loading indicator if tree is empty (first load)
+        # Don't clear tree on refresh to keep existing orders
+        existing_items = self.tree.get_children()
+        if not existing_items or force:
+            # Only clear on first load or forced refresh
+            self._show_loading_indicator()
+        else:
+            # Just show a subtle loading status without clearing
+            logger.debug("Refreshing orders (keeping existing items)")
         
         def worker():
             """Background thread worker for loading orders with parallel queries."""
@@ -1207,15 +1214,27 @@ class CourierManager:
                     # Get existing order IDs to avoid duplicates
                     existing_order_ids = set(self.tree.get_children())
                     
+                    # Remove loading indicator if present
+                    for item in list(existing_order_ids):
+                        if self.tree.exists(item):
+                            values = self.tree.item(item, "values")
+                            if values and len(values) > 0 and values[0] == "Laden...":
+                                self.tree.delete(item)
+                                existing_order_ids.discard(item)
+                    
                     # Filter out orders that are already in the tree
                     new_orders = []
                     new_online_orders = []
+                    orders_to_update = []  # Orders that exist but may need updating
                     
                     # Check local orders
                     for order in orders:
                         order_id = str(order.get('id', ''))
                         if order_id not in existing_order_ids:
                             new_orders.append(order)
+                        else:
+                            # Order exists - check if it needs updating (e.g. courier assignment changed)
+                            orders_to_update.append(order)
                     
                     # Check online orders
                     for online_order in online_orders:
@@ -1224,16 +1243,28 @@ class CourierManager:
                         order_id = f"online_{online_order.get('id', '')}"
                         if order_id not in existing_order_ids:
                             new_online_orders.append(online_order)
+                        else:
+                            # Order exists - check if it needs updating
+                            orders_to_update.append({
+                                'id': order_id,
+                                'koerier_id': online_order.get('koerier_id'),
+                                'koerier_naam': self.get_courier_name_by_id(online_order.get('koerier_id'))
+                            })
                     
                     # Only add new orders to tree (keep existing ones)
                     if new_orders or new_online_orders:
                         self._add_orders_to_tree(new_orders, new_online_orders, order_date)
+                        logger.debug(f"Added {len(new_orders) + len(new_online_orders)} new orders to tree")
+                    
+                    # Update existing orders if courier assignment changed
+                    # This ensures UI stays in sync with database
+                    self._update_existing_orders(orders, online_orders)
                     
                     # Apply filters
                     if hasattr(self, 'search_var') and hasattr(self, 'filter_courier_var'):
                         self.apply_filters()
                     
-                    # Recalculate totals
+                    # Recalculate totals (this reads from database, so it's always accurate)
                     if hasattr(self, 'totals_var') and self.totals_var:
                         try:
                             self.recalculate_courier_totals()
@@ -1245,7 +1276,7 @@ class CourierManager:
                     if hasattr(self, 'courier_cards_frame'):
                         self.render_courier_cards()
                     
-                    logger.debug("Orders loaded successfully in background")
+                    logger.debug("Orders refreshed successfully (kept existing items)")
                 elif result_type == "error":
                     logger.error(f"Error loading orders: {data}")
                     # Show error in UI (from main thread)
@@ -1374,6 +1405,68 @@ class CourierManager:
         # Batch insert all items at once
         for item_id, values, tags in items_to_insert:
             self.tree.insert("", tk.END, iid=item_id, values=values, tags=tags)
+    
+    def _update_existing_orders(self, orders: List[Dict], online_orders: List[Dict]) -> None:
+        """Update existing orders in tree if courier assignment changed."""
+        if not self.tree:
+            return
+        
+        # Build a map of order_id -> koerier_naam from fresh data
+        order_courier_map = {}
+        
+        # Add local orders
+        for order in orders:
+            order_id = str(order.get('id', ''))
+            koerier_naam = order.get('koerier_naam') or ""
+            order_courier_map[order_id] = koerier_naam
+        
+        # Add online orders
+        for online_order in online_orders:
+            if online_order.get('afhaal') or online_order.get('betaalmethode') == 'pickup':
+                continue
+            order_id = f"online_{online_order.get('id', '')}"
+            koerier_id = online_order.get('koerier_id')
+            koerier_naam = self.get_courier_name_by_id(koerier_id) if koerier_id else ""
+            order_courier_map[order_id] = koerier_naam
+        
+        # Update existing items in tree if courier changed
+        updated_count = 0
+        for item_id in self.tree.get_children():
+            if item_id in order_courier_map:
+                # Check if courier assignment changed
+                current_values = list(self.tree.item(item_id, "values"))
+                if len(current_values) >= 10:
+                    current_koerier = current_values[9] if len(current_values) > 9 else ""
+                    new_koerier = order_courier_map[item_id]
+                    
+                    if current_koerier != new_koerier:
+                        # Update courier column
+                        current_values[9] = new_koerier
+                        
+                        # Update tags based on courier
+                        if new_koerier:
+                            tags = [f"koerier_{new_koerier.replace(' ', '_')}"]
+                        else:
+                            # Determine base tag for unassigned
+                            try:
+                                if "online_" in item_id:
+                                    order_num = int(item_id.replace("online_", ""))
+                                else:
+                                    order_num = int(item_id)
+                                base_tag = "row_a" if order_num % 2 == 0 else "row_b"
+                            except (ValueError, TypeError):
+                                base_tag = "row_a"
+                            
+                            tags = [base_tag, "unassigned"]
+                            if "online_" in item_id:
+                                tags.append("online")
+                        
+                        self.tree.item(item_id, values=tuple(current_values), tags=tuple(tags))
+                        updated_count += 1
+                        logger.debug(f"Updated courier assignment for order {item_id}: '{current_koerier}' -> '{new_koerier}'")
+        
+        if updated_count > 0:
+            logger.debug(f"Updated {updated_count} existing orders with new courier assignments")
     
     def recalculate_courier_totals(self) -> None:
         """Recalculate totals for each courier."""
@@ -1638,13 +1731,10 @@ class CourierManager:
                     else:
                         logger.warning(f"Order item {item_id} not found in tree")
                 
-                # Incremental totals update (FAST - no recalculation)
-                if hasattr(self, 'totals_var') and self.totals_var and naam in self.totals_var:
-                    current_total = self.totals_var[naam].get()
-                    self.totals_var[naam].set(round(current_total + total_to_add, 2))
-                    # Update payment asynchronously to prevent blocking
-                    root = self.parent.winfo_toplevel()
-                    root.after_idle(lambda: self._update_payment_async(naam))
+                # Recalculate totals to ensure accuracy (prevents double counting)
+                # This ensures correct totals even if orders were previously assigned to other couriers
+                root = self.parent.winfo_toplevel()
+                root.after_idle(lambda: self.recalculate_courier_totals())
             
             # Assign online orders via API (async to not block)
             if online_order_ids:

@@ -97,8 +97,9 @@ De exe staat dan in `dist\main.exe`
 
 ## 🔄 Updates Installeren
 
-### Automatisch (Met Auto-Update Systeem)
+### Voor Exe Gebruikers
 
+**Automatisch (Met Auto-Update Systeem):**
 1. Start de applicatie
 2. Als er een update is, krijg je automatisch een melding
 3. Klik "Download Nu"
@@ -107,14 +108,25 @@ De exe staat dan in `dist\main.exe`
 6. **Vervang** het oude `.exe` bestand met het nieuwe
 7. Start opnieuw
 
-**⚠️ Belangrijk:** Je database en instellingen blijven behouden!
-
-### Handmatig
-
+**Handmatig:**
 1. Download nieuwe exe van GitHub Releases
 2. Stop de applicatie
 3. Vervang oude exe met nieuwe
 4. Start opnieuw
+
+**⚠️ Belangrijk:** Je database en instellingen blijven behouden!
+
+### Voor Broncode Gebruikers
+
+**Simpelste manier:**
+```bash
+cd C:\pizzeria-management-system
+git pull origin main
+pip install -r requirements.txt
+python main.py
+```
+
+📖 **Zie [PC Update Gids](docs/PC_UPDATE_GUIDE.md) voor volledige instructies en troubleshooting**
 
 ---
 

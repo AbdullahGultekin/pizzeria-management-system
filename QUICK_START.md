@@ -63,18 +63,20 @@ git push origin v1.1.0
 
 ### Updates Installeren
 
-**Automatisch:**
+**Voor Exe Gebruikers:**
 - App controleert automatisch op updates
 - Je krijgt een melding als er een update is
 - Klik "Download Nu" en vervang de oude exe
 
-**Handmatig:**
-1. Download nieuwe exe van GitHub Releases
-2. Stop de app
-3. Vervang oude exe met nieuwe
-4. Start opnieuw
+**Voor Broncode Gebruikers:**
+```bash
+cd C:\pizzeria-management-system
+git pull origin main
+pip install -r requirements.txt
+python main.py
+```
 
-📖 **Zie [PC Installatie Gids](docs/PC_INSTALLATIE_GUIDE.md) voor volledige instructies**
+📖 **Zie [PC Update Gids](docs/PC_UPDATE_GUIDE.md) voor volledige instructies**
 
 ---
 

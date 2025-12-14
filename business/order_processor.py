@@ -161,7 +161,9 @@ class OrderProcessor:
                 straat = klant_data.get("adres", "") or ""
                 huisnummer = klant_data.get("nr", "") or ""
                 plaats = klant_data.get("postcode_gemeente", "") or ""
+                logger.info(f"Bezorging - Adres uit formulier: straat='{straat}', huisnummer='{huisnummer}', plaats='{plaats}'")
 
+            logger.info(f"Klant opslaan/updaten: telefoon={klant_data['telefoon']}, straat='{straat}', huisnummer='{huisnummer}', plaats='{plaats}'")
             self.customer_service.create_or_update_customer(
                 telefoon=klant_data["telefoon"],
                 straat=straat,

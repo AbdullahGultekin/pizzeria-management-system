@@ -174,6 +174,23 @@ def create_tables():
             cursor.execute("ALTER TABLE klanten ADD COLUMN totaal_besteed REAL DEFAULT 0.0")
         if 'volle_kaart' not in kcols:
             cursor.execute("ALTER TABLE klanten ADD COLUMN volle_kaart INTEGER DEFAULT 0")
+        # Professional improvements
+        if 'created_at' not in kcols:
+            cursor.execute("ALTER TABLE klanten ADD COLUMN created_at TEXT")
+            # Set default value for existing records
+            default_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            cursor.execute("UPDATE klanten SET created_at = ? WHERE created_at IS NULL", (default_time,))
+        if 'updated_at' not in kcols:
+            cursor.execute("ALTER TABLE klanten ADD COLUMN updated_at TEXT")
+            # Set default value for existing records
+            default_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            cursor.execute("UPDATE klanten SET updated_at = ? WHERE updated_at IS NULL", (default_time,))
+        if 'email' not in kcols:
+            cursor.execute("ALTER TABLE klanten ADD COLUMN email TEXT")
+        if 'postcode' not in kcols:
+            cursor.execute("ALTER TABLE klanten ADD COLUMN postcode TEXT")
+        if 'is_actief' not in kcols:
+            cursor.execute("ALTER TABLE klanten ADD COLUMN is_actief INTEGER DEFAULT 1")
 
         # Koeriers tabel
         cursor.execute('''

@@ -152,42 +152,73 @@ def show_update_dialog(parent: tk.Tk, update_info: dict):
         def update_worker():
             """Perform update in background thread."""
             try:
-                status_label.config(text="Backup maken van lokale gegevens...")
+                # Update status label (thread-safe via after)
+                parent.after(0, lambda: status_label.config(text="Backup maken van lokale gegevens..."))
+                
+                # Perform git update
                 success, message = perform_git_update(backup_data=True)
                 
-                progress_bar.stop()
-                progress_dialog.destroy()
-                dialog.destroy()
+                # Update UI from main thread (thread-safe)
+                def on_complete():
+                    progress_bar.stop()
+                    progress_dialog.destroy()
+                    dialog.destroy()
+                    
+                    if success:
+                        # Show success message
+                        result = messagebox.askyesno(
+                            "Update Succesvol",
+                            f"{message}\n\n"
+                            "De applicatie moet opnieuw worden gestart om de updates te activeren.\n\n"
+                            "Wil je de applicatie nu opnieuw starten?",
+                            parent=parent
+                        )
+                        
+                        if result:
+                            # Restart application
+                            import sys
+                            import os
+                            try:
+                                # Close all windows first
+                                parent.quit()
+                                parent.destroy()
+                                # Restart
+                                os.execv(sys.executable, [sys.executable] + sys.argv)
+                            except Exception as e:
+                                logger.exception(f"Error restarting application: {e}")
+                                messagebox.showinfo(
+                                    "Herstart Vereist",
+                                    "Update succesvol!\n\n"
+                                    "Start de applicatie handmatig opnieuw om de updates te activeren.",
+                                    parent=parent
+                                )
+                    else:
+                        messagebox.showerror(
+                            "Update Gefaald",
+                            f"{message}\n\n"
+                            "Je kunt handmatig updaten via:\n"
+                            "scripts\\update\\update_safe.bat\n\n"
+                            "Of gebruik: git pull origin main",
+                            parent=parent
+                        )
                 
-                if success:
-                    messagebox.showinfo(
-                        "Update Succesvol",
-                        f"{message}\n\n"
-                        "De applicatie zal nu opnieuw starten.\n"
-                        "Sluit dit venster om de update te voltooien.",
-                        parent=parent
-                    )
-                    # Restart application
-                    import sys
-                    import os
-                    os.execv(sys.executable, [sys.executable] + sys.argv)
-                else:
-                    messagebox.showerror(
-                        "Update Gefaald",
-                        f"{message}\n\n"
-                        "Je kunt handmatig updaten via:\n"
-                        "scripts\\update\\update_safe.bat",
-                        parent=parent
-                    )
+                parent.after(0, on_complete)
+                
             except Exception as e:
-                progress_bar.stop()
-                progress_dialog.destroy()
                 logger.exception(f"Error during auto update: {e}")
-                messagebox.showerror(
-                    "Fout",
-                    f"Fout tijdens automatische update:\n{str(e)}",
-                    parent=parent
-                )
+                
+                def on_error():
+                    progress_bar.stop()
+                    progress_dialog.destroy()
+                    messagebox.showerror(
+                        "Fout",
+                        f"Fout tijdens automatische update:\n{str(e)}\n\n"
+                        "Probeer handmatig te updaten via:\n"
+                        "git pull origin main",
+                        parent=parent
+                    )
+                
+                parent.after(0, on_error)
         
         # Start update in background
         thread = threading.Thread(target=update_worker, daemon=True)

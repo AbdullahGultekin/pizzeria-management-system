@@ -228,18 +228,23 @@ class CourierService:
         extra_bedrag: float = 0.0
     ) -> float:
         """
-        Calculate total payment for a courier.
+        Calculate payment for a courier (only extras, not subtotal or startgeld).
+        
+        Formula: (km * km_tarief) + (uur * uur_tarief) + extra_bedrag
+        This is what is actually paid to the courier on top of startgeld and order totals.
         
         Args:
-            subtotal: Subtotal from orders
+            subtotal: Subtotal from orders (not used in calculation, but kept for API compatibility)
             extra_km: Extra kilometers
             extra_uur: Extra hours
             extra_bedrag: Extra amount
             
         Returns:
-            Total payment amount
+            Payment amount (only extras)
         """
         try:
+            # Payment = only extras (km, uur, extra bedrag)
+            # Startgeld and subtotal are NOT included in the payment
             total = (extra_km * KM_TARIEF) + (extra_uur * UUR_TARIEF) + extra_bedrag
             return round(total, 2)
         except (TypeError, ValueError):
