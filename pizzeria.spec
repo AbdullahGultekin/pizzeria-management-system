@@ -94,15 +94,20 @@ hiddenimports = [
 ]
 
 # Add Tcl/Tk data files (required for Tkinter to work in EXE)
-# PyInstaller needs the entire tcl directory to be included
-if tcl_dir and tcl_dir.exists():
-    # Add entire tcl directory - PyInstaller will extract it to _MEI*/tcl at runtime
-    tcl_data = str(tcl_dir)
-    datas.append((tcl_data, 'tcl'))
-    print(f"Added Tcl/Tk data: {tcl_data} -> tcl/")
-    print(f"  This includes: tcl8.6, tk8.6, and other Tcl packages")
-else:
-    print("WARNING: Tcl directory not found! Tkinter may not work in EXE.")
+# PyInstaller should auto-detect Tkinter dependencies, but if needed, we can add specific files
+# NOTE: Only add if PyInstaller fails to auto-detect. The entire tcl directory is too large!
+# Uncomment below only if Tkinter doesn't work in the built EXE
+# if tcl_dir and tcl_dir.exists():
+#     tcl86_dir = tcl_dir / 'tcl8.6'
+#     tk86_dir = tcl_dir / 'tk8.6'
+#     if tcl86_dir.exists():
+#         datas.append((str(tcl86_dir), 'tcl/tcl8.6'))
+#     if tk86_dir.exists():
+#         datas.append((str(tk86_dir), 'tcl/tk8.6'))
+#     print(f"Added essential Tcl/Tk files")
+# else:
+#     print("WARNING: Tcl directory not found! Tkinter may not work in EXE.")
+print("INFO: Relying on PyInstaller auto-detection for Tcl/Tk (more efficient)")
 
 # Analysis phase
 a = Analysis(
@@ -122,6 +127,19 @@ a = Analysis(
         'pytest',
         'pytest-cov',
         'pytest-mock',
+        'setuptools',
+        'distutils',
+        'email',
+        'http',
+        'urllib',
+        'xml',
+        'xmlrpc',
+        'pydoc',
+        'doctest',
+        'unittest',
+        'test',
+        'tests',
+        'tkinter.test',
     ],
     noarchive=False,
     optimize=0,
