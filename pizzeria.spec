@@ -91,6 +91,9 @@ hiddenimports = [
     'certifi',  # SSL certificates for requests
     'charset_normalizer',  # Character encoding detection for requests
     'idna',  # Internationalized domain names for requests
+    'urllib',  # Required by pathlib and used in bon_viewer.py
+    'urllib.parse',  # Used for URL encoding in bon_viewer.py
+    'urllib.request',  # Used in update_checker.py
 ]
 
 # Add Tcl/Tk data files (required for Tkinter to work in EXE)
@@ -129,9 +132,6 @@ a = Analysis(
         'pytest-mock',
         'setuptools',
         'distutils',
-        'email',
-        'http',
-        'urllib',
         'xml',
         'xmlrpc',
         'pydoc',
