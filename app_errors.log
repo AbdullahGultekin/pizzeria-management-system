@@ -16,3 +16,141 @@ Traceback (most recent call last):
     bg_light, fg_dark = CARD_COLORS[(i - 1) % len(CARD_COLORS)]
     ^^^^^^^^^^^^^^^^^
 ValueError: too many values to unpack (expected 2)
+2025-12-09 21:16:29 - pizzeria.ui.tab_manager - ERROR - tab_manager.py:92 - Error loading tab Koeriers: 'CourierManager' object has no attribute 'loading_orders'
+Traceback (most recent call last):
+  File "/Users/abdullahgultekin/Cursor projects/Deskcomputer/ui/tab_manager.py", line 87, in _load_tab_async
+    callback(parent)
+    ~~~~~~~~^^^^^^^^
+  File "/Users/abdullahgultekin/Cursor projects/Deskcomputer/app.py", line 2085, in <lambda>
+    "Koeriers": lambda parent: open_koeriers(parent),
+                               ~~~~~~~~~~~~~^^^^^^^^
+  File "/Users/abdullahgultekin/Cursor projects/Deskcomputer/modules/koeriers.py", line 2293, in open_koeriers
+    manager.setup_ui()
+    ~~~~~~~~~~~~~~~~^^
+  File "/Users/abdullahgultekin/Cursor projects/Deskcomputer/modules/koeriers.py", line 283, in setup_ui
+    self.load_orders()
+    ~~~~~~~~~~~~~~~~^^
+  File "/Users/abdullahgultekin/Cursor projects/Deskcomputer/modules/koeriers.py", line 1046, in load_orders
+    if not self.loading_orders:
+           ^^^^^^^^^^^^^^^^^^^
+AttributeError: 'CourierManager' object has no attribute 'loading_orders'. Did you mean: 'load_orders'?
+2025-12-09 21:16:33 - pizzeria.ui.tab_manager - ERROR - tab_manager.py:92 - Error loading tab Geschiedenis: 'HistoryManager' object has no attribute 'loading_data'
+Traceback (most recent call last):
+  File "/Users/abdullahgultekin/Cursor projects/Deskcomputer/ui/tab_manager.py", line 87, in _load_tab_async
+    callback(parent)
+    ~~~~~~~~^^^^^^^^
+  File "/Users/abdullahgultekin/Cursor projects/Deskcomputer/app.py", line 2080, in <lambda>
+    "Geschiedenis": lambda parent: open_geschiedenis(
+                                   ~~~~~~~~~~~~~~~~~^
+        parent, self.menu_data, self.EXTRAS, self.app_settings, self.laad_bestelling_voor_aanpassing
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ),
+    ^
+  File "/Users/abdullahgultekin/Cursor projects/Deskcomputer/modules/geschiedenis.py", line 1007, in open_geschiedenis
+    manager.setup_ui()
+    ~~~~~~~~~~~~~~~~^^
+  File "/Users/abdullahgultekin/Cursor projects/Deskcomputer/modules/geschiedenis.py", line 112, in setup_ui
+    self.refresh_data()
+    ~~~~~~~~~~~~~~~~~^^
+  File "/Users/abdullahgultekin/Cursor projects/Deskcomputer/modules/geschiedenis.py", line 245, in refresh_data
+    if not self.loading_data:
+           ^^^^^^^^^^^^^^^^^
+AttributeError: 'HistoryManager' object has no attribute 'loading_data'
+2025-12-09 21:17:40 - pizzeria.ui.tab_manager - ERROR - tab_manager.py:92 - Error loading tab Koeriers: 'Treeview' object has no attribute 'tag_names'
+Traceback (most recent call last):
+  File "/Users/abdullahgultekin/Cursor projects/Deskcomputer/ui/tab_manager.py", line 87, in _load_tab_async
+    callback(parent)
+    ~~~~~~~~^^^^^^^^
+  File "/Users/abdullahgultekin/Cursor projects/Deskcomputer/app.py", line 2085, in <lambda>
+    "Koeriers": lambda parent: open_koeriers(parent),
+                               ~~~~~~~~~~~~~^^^^^^^^
+  File "/Users/abdullahgultekin/Cursor projects/Deskcomputer/modules/koeriers.py", line 2297, in open_koeriers
+    manager.setup_ui()
+    ~~~~~~~~~~~~~~~~^^
+  File "/Users/abdullahgultekin/Cursor projects/Deskcomputer/modules/koeriers.py", line 287, in setup_ui
+    self.load_orders()
+    ~~~~~~~~~~~~~~~~^^
+  File "/Users/abdullahgultekin/Cursor projects/Deskcomputer/modules/koeriers.py", line 1051, in load_orders
+    self.load_orders_async(force)
+    ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/Users/abdullahgultekin/Cursor projects/Deskcomputer/modules/koeriers.py", line 1063, in load_orders_async
+    self._show_loading_indicator()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/Users/abdullahgultekin/Cursor projects/Deskcomputer/modules/koeriers.py", line 1178, in _show_loading_indicator
+    if "loading" not in [tag for tag in self.tree.tag_names()]:
+                                        ^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Treeview' object has no attribute 'tag_names'. Did you mean: 'image_names'?
+2025-12-09 21:17:44 - pizzeria.ui.tab_manager - ERROR - tab_manager.py:92 - Error loading tab Geschiedenis: 'Treeview' object has no attribute 'tag_names'
+Traceback (most recent call last):
+  File "/Users/abdullahgultekin/Cursor projects/Deskcomputer/ui/tab_manager.py", line 87, in _load_tab_async
+    callback(parent)
+    ~~~~~~~~^^^^^^^^
+  File "/Users/abdullahgultekin/Cursor projects/Deskcomputer/app.py", line 2080, in <lambda>
+    "Geschiedenis": lambda parent: open_geschiedenis(
+                                   ~~~~~~~~~~~~~~~~~^
+        parent, self.menu_data, self.EXTRAS, self.app_settings, self.laad_bestelling_voor_aanpassing
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ),
+    ^
+  File "/Users/abdullahgultekin/Cursor projects/Deskcomputer/modules/geschiedenis.py", line 1011, in open_geschiedenis
+    manager.setup_ui()
+    ~~~~~~~~~~~~~~~~^^
+  File "/Users/abdullahgultekin/Cursor projects/Deskcomputer/modules/geschiedenis.py", line 116, in setup_ui
+    self.refresh_data()
+    ~~~~~~~~~~~~~~~~~^^
+  File "/Users/abdullahgultekin/Cursor projects/Deskcomputer/modules/geschiedenis.py", line 250, in refresh_data
+    self.refresh_data_async(force)
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/Users/abdullahgultekin/Cursor projects/Deskcomputer/modules/geschiedenis.py", line 262, in refresh_data_async
+    self._show_loading_indicator()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/Users/abdullahgultekin/Cursor projects/Deskcomputer/modules/geschiedenis.py", line 364, in _show_loading_indicator
+    if "loading" not in [tag for tag in self.tree.tag_names()]:
+                                        ^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Treeview' object has no attribute 'tag_names'. Did you mean: 'image_names'?
+2025-12-09 21:19:10 - pizzeria.courier_service - ERROR - courier_service.py:174 - Error fetching orders: Cannot operate on a closed database.
+Traceback (most recent call last):
+  File "/Users/abdullahgultekin/Cursor projects/Deskcomputer/modules/courier_service.py", line 171, in get_orders_for_date
+    cursor.execute(query, tuple(params))
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^
+sqlite3.ProgrammingError: Cannot operate on a closed database.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/abdullahgultekin/Cursor projects/Deskcomputer/modules/courier_service.py", line 138, in get_orders_for_date
+    with DatabaseContext() as conn:
+         ~~~~~~~~~~~~~~~^^
+  File "/Users/abdullahgultekin/Cursor projects/Deskcomputer/database.py", line 126, in __exit__
+    self.conn.rollback()
+    ~~~~~~~~~~~~~~~~~~^^
+sqlite3.ProgrammingError: Cannot operate on a closed database.
+2025-12-09 21:19:10 - pizzeria.koeriers - ERROR - koeriers.py:1217 - Error loading orders: Kon bestellingen niet ophalen: Cannot operate on a closed database.
+2025-12-09 21:19:23 - pizzeria.ui.tab_manager - ERROR - tab_manager.py:92 - Error loading tab Geschiedenis: cannot access local variable 'orders' where it is not associated with a value
+Traceback (most recent call last):
+  File "/Users/abdullahgultekin/Cursor projects/Deskcomputer/ui/tab_manager.py", line 87, in _load_tab_async
+    callback(parent)
+    ~~~~~~~~^^^^^^^^
+  File "/Users/abdullahgultekin/Cursor projects/Deskcomputer/app.py", line 2080, in <lambda>
+    "Geschiedenis": lambda parent: open_geschiedenis(
+                                   ~~~~~~~~~~~~~~~~~^
+        parent, self.menu_data, self.EXTRAS, self.app_settings, self.laad_bestelling_voor_aanpassing
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ),
+    ^
+  File "/Users/abdullahgultekin/Cursor projects/Deskcomputer/modules/geschiedenis.py", line 1010, in open_geschiedenis
+    manager.setup_ui()
+    ~~~~~~~~~~~~~~~~^^
+  File "/Users/abdullahgultekin/Cursor projects/Deskcomputer/modules/geschiedenis.py", line 116, in setup_ui
+    self.refresh_data()
+    ~~~~~~~~~~~~~~~~~^^
+  File "/Users/abdullahgultekin/Cursor projects/Deskcomputer/modules/geschiedenis.py", line 250, in refresh_data
+    self.refresh_data_async(force)
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/Users/abdullahgultekin/Cursor projects/Deskcomputer/modules/geschiedenis.py", line 348, in refresh_data_async
+    self._check_data_queue()
+    ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/Users/abdullahgultekin/Cursor projects/Deskcomputer/modules/geschiedenis.py", line 428, in _check_data_queue
+    for idx, order in enumerate(orders):
+                                ^^^^^^
+UnboundLocalError: cannot access local variable 'orders' where it is not associated with a value
